@@ -12,6 +12,21 @@ registered_users = {}
 flats = {}  # {flat : meters_count }
 current_datetime = datetime.now()
 print(current_datetime)
+months = {
+    1: 'январь',
+    2: 'февраль',
+    3: 'март',
+    4: 'апрель',
+    5: 'май',
+    6: 'июнь',
+    7: 'июль',
+    8: 'август',
+    9: 'сентябрь',
+    10: 'октябрь',
+    11: 'ноябрь',
+    12: 'декабрь'
+}
+
 
 @bot.message_handler(commands=['start'])
 def start(message):
@@ -99,6 +114,50 @@ def account(message):
         bot.send_message(message.chat.id, "Вы еще не зарегистрированы! Нажмите /start")
 
 
+@bot.message_handler(commands=['send'])
+def send_data(message):
+    user_id = message.from_user.id
+    if user_id not in registered_users:
+        bot.send_message(message.chat.id, "❌ Вы не зарегистрированы! Начните с /start")
+        return
+
+    apartment = registered_users[user_id]
+    if apartment not in flats:
+        bot.send_message(message.chat.id, "⚠️ Данные о ваших счетчиках не найдены! Пройдите регистрацию заново /start")
+        return
+
+    count = flats[apartment]
+    now = datetime.now()
+    month = months[now.month]
+
+    c1 = "Счетчик 1"
+    c2 = "Счетчик 2"
+    c3 = "Счетчик 3"
+    c4 = "Счетчик 4"
+    c5 = "Счетчик 5"
+
+    if count == 3:
+        markup = types.InlineKeyboardMarkup()
+        markup.add(
+            types.InlineKeyboardButton(c1, callback_data='c1'),
+            types.InlineKeyboardButton(c2, callback_data='c2'))
+        markup.add(types.InlineKeyboardButton(c3, callback_data='c3'))
+        bot.send_message(message.chat.id, f"Передача показаний счетчиков за {month} {now.year}", reply_markup=markup)
+
+    if count == 5:
+        markup = types.InlineKeyboardMarkup()
+        markup.add(
+            types.InlineKeyboardButton(c1, callback_data='c1'),
+            types.InlineKeyboardButton(c2, callback_data='c2')
+        )
+        markup.add(
+            types.InlineKeyboardButton(c3, callback_data='c3'),
+            types.InlineKeyboardButton(c4, callback_data='c4')
+        )
+        markup.add(types.InlineKeyboardButton(c5,callback_data='c5'))
+        bot.send_message(message.chat.id, f"Передача показаний счетчиков за {month} {now.year}", reply_markup=markup)
+
+
 def check_monthly_notification():
     """Проверяем, нужно ли отправлять уведомление"""
     while True:
@@ -127,6 +186,7 @@ def send_notification():
             print(f"Отправлено пользователю {user_id}. Кваритра {registered_users[user_id]}")
         except Exception as e:
             print(f"Ошибка отправки пользователю {user_id}: {e}")
+
 
 if __name__ == "__main__":
     # Запуск проверки уведомлений в отдельном потоке
