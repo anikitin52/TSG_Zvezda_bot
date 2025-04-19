@@ -26,6 +26,8 @@ months = {
     11: 'ноябрь',
     12: 'декабрь'
 }
+user_metrics = {}  # {user_id: {'c1': value, 'c2': value, ...}}
+current_editing = {}  # {user_id: current_editing_counter}
 
 
 @bot.message_handler(commands=['start'])
@@ -113,7 +115,115 @@ def account(message):
     else:
         bot.send_message(message.chat.id, "Вы еще не зарегистрированы! Нажмите /start")
 
+def create_meters_markup(user_id, count):
+    markup = types.InlineKeyboardMarkup()
+    metrics = user_metrics.get(user_id, {})
 
+    # Создаем кнопки счетчиков с отметками
+    buttons = []
+    for i in range(1, count + 1):
+        btn_text = f"Счетчик {i}"
+        if metrics.get(f'c{i}') is not None:
+            btn_text += " ✓"
+        buttons.append(types.InlineKeyboardButton(btn_text, callback_data=f'meter_{i}'))
+
+    # Распределяем кнопки по рядам
+    if count == 3:
+        markup.row(buttons[0], buttons[1])
+        markup.row(buttons[2])
+    elif count == 5:
+        markup.row(buttons[0], buttons[1])
+        markup.row(buttons[2], buttons[3])
+        markup.row(buttons[4])
+
+    # Добавляем кнопки управления
+    done = all(metrics.get(f'c{i}') is not None for i in range(1, count + 1))
+    if done:
+        markup.row(types.InlineKeyboardButton("✅ Подтвердить", callback_data='confirm'))
+    markup.row(types.InlineKeyboardButton("↩️ Назад", callback_data='cancel'))
+
+    return markup
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('meter_'))
+def handle_meter_select(call):
+    user_id = call.from_user.id
+    meter_num = call.data.split('_')[1]
+    current_editing[user_id] = meter_num
+
+    # Запрашиваем ввод показаний
+    msg = bot.send_message(call.message.chat.id,
+                           f"Введите показания для счетчика {meter_num} (только число):")
+    bot.register_next_step_handler(msg, process_meter_value)
+
+
+def process_meter_value(message):
+    user_id = message.from_user.id
+    meter_num = current_editing.get(user_id)
+
+    try:
+        value = int(message.text.strip())
+        if value < 0:
+            raise ValueError
+    except:
+        msg = bot.send_message(message.chat.id, "❌ Некорректное значение! Введите целое положительное число:")
+        bot.register_next_step_handler(msg, process_meter_value)
+        return
+
+    # Сохраняем значение
+    if user_id not in user_metrics:
+        user_metrics[user_id] = {}
+    user_metrics[user_id][f'c{meter_num}'] = value
+    del current_editing[user_id]
+
+    # Показываем обновленное меню
+    show_meters_menu(message.chat.id, user_id)
+
+
+def show_meters_menu(chat_id, user_id):
+    if user_id not in registered_users:
+        return
+
+    apartment = registered_users[user_id]
+    count = flats[apartment]
+    now = datetime.now()
+    month = months[now.month]
+
+    markup = create_meters_markup(user_id, count)
+    bot.send_message(chat_id,
+                     f"📊 Передача показаний за {month} {now.year}\n"
+                     f"Выберите счетчик:",
+                     reply_markup=markup)
+
+
+@bot.callback_query_handler(func=lambda call: call.data in ['confirm', 'cancel'])
+def handle_actions(call):
+    user_id = call.from_user.id
+    if call.data == 'confirm':
+        # Формируем сообщение для админа
+        metrics = user_metrics.get(user_id, {})
+        report = "\n".join([f"{k}: {v}" for k, v in metrics.items()])
+        bot.send_message(ADMIN_ID,
+                         f"Новые показания от квартиры {registered_users[user_id]}:\n{report}")
+
+        # Очищаем данные
+        if user_id in user_metrics:
+            del user_metrics[user_id]
+        bot.send_message(call.message.chat.id, "✅ Показания успешно отправлены!")
+
+    elif call.data == 'cancel':
+        # Сбрасываем данные
+        if user_id in user_metrics:
+            del user_metrics[user_id]
+        bot.send_message(call.message.chat.id, "🚫 Ввод показаний отменен")
+
+    # Удаляем предыдущее сообщение с кнопками
+    try:
+        bot.delete_message(call.message.chat.id, call.message.message_id)
+    except:
+        pass
+
+## TODO: Перед подтвержением персмотреть все показания
 @bot.message_handler(commands=['send'])
 def send_data(message):
     user_id = message.from_user.id
@@ -127,36 +237,7 @@ def send_data(message):
         return
 
     count = flats[apartment]
-    now = datetime.now()
-    month = months[now.month]
-
-    c1 = "Счетчик 1"
-    c2 = "Счетчик 2"
-    c3 = "Счетчик 3"
-    c4 = "Счетчик 4"
-    c5 = "Счетчик 5"
-
-    if count == 3:
-        markup = types.InlineKeyboardMarkup()
-        markup.add(
-            types.InlineKeyboardButton(c1, callback_data='c1'),
-            types.InlineKeyboardButton(c2, callback_data='c2'))
-        markup.add(types.InlineKeyboardButton(c3, callback_data='c3'))
-        bot.send_message(message.chat.id, f"Передача показаний счетчиков за {month} {now.year}", reply_markup=markup)
-
-    if count == 5:
-        markup = types.InlineKeyboardMarkup()
-        markup.add(
-            types.InlineKeyboardButton(c1, callback_data='c1'),
-            types.InlineKeyboardButton(c2, callback_data='c2')
-        )
-        markup.add(
-            types.InlineKeyboardButton(c3, callback_data='c3'),
-            types.InlineKeyboardButton(c4, callback_data='c4')
-        )
-        markup.add(types.InlineKeyboardButton(c5,callback_data='c5'))
-        bot.send_message(message.chat.id, f"Передача показаний счетчиков за {month} {now.year}", reply_markup=markup)
-
+    show_meters_menu(message.chat.id, user_id)
 
 def check_monthly_notification():
     """Проверяем, нужно ли отправлять уведомление"""
