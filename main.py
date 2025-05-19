@@ -10,6 +10,10 @@ bot = TeleBot(BOT_TOKEN)
 # Хранилище данных: {user_id: apartment_number}
 registered_users = {}
 flats = {}  # {flat : meters_count }
+
+user_metrics = {}  # {user_id: {'c1': value, 'c2': value, ...}}
+current_editing = {}  # {user_id: current_editing_counter}
+
 current_datetime = datetime.now()
 print(current_datetime)
 months = {
@@ -76,7 +80,6 @@ def process_apartment_step(message):
     )
     bot.send_message(message.chat.id, "Выберите количество счетчиков:", reply_markup=markup)
 
-
 @bot.callback_query_handler(func=lambda call: call.data.startswith('meters_'))
 def handle_meters_choice(call):
     _, count, apartment = call.data.split('_')
@@ -102,7 +105,6 @@ def handle_meters_choice(call):
     # Уведомление админу
     bot.send_message(ADMIN_ID, f"Новый пользователь!\nКвартира: {apartment}\nСчетчиков: {count}")
 
-
 @bot.message_handler(commands=['account'])
 def account(message):
     user_id = message.from_user.id
@@ -115,19 +117,18 @@ def account(message):
     else:
         bot.send_message(message.chat.id, "Вы еще не зарегистрированы! Нажмите /start")
 
+
 def create_meters_markup(user_id, count):
     markup = types.InlineKeyboardMarkup()
     metrics = user_metrics.get(user_id, {})
 
-    # Создаем кнопки счетчиков с отметками
     buttons = []
     for i in range(1, count + 1):
         btn_text = f"Счетчик {i}"
-        if metrics.get(f'c{i}') is not None:
+        if f'c{i}' in metrics:
             btn_text += " ✓"
         buttons.append(types.InlineKeyboardButton(btn_text, callback_data=f'meter_{i}'))
 
-    # Распределяем кнопки по рядам
     if count == 3:
         markup.row(buttons[0], buttons[1])
         markup.row(buttons[2])
@@ -136,13 +137,100 @@ def create_meters_markup(user_id, count):
         markup.row(buttons[2], buttons[3])
         markup.row(buttons[4])
 
-    # Добавляем кнопки управления
-    done = all(metrics.get(f'c{i}') is not None for i in range(1, count + 1))
-    if done:
-        markup.row(types.InlineKeyboardButton("✅ Подтвердить", callback_data='confirm'))
-    markup.row(types.InlineKeyboardButton("↩️ Назад", callback_data='cancel'))
+    # Изменяем условие для перехода к проверке
+    if all(f'c{i}' in metrics for i in range(1, count + 1)):
+        markup.row(types.InlineKeyboardButton("📤 Перейти к проверке", callback_data='review'))
+
+    markup.row(types.InlineKeyboardButton("🚫 Отменить ввод", callback_data='cancel'))
 
     return markup
+
+
+def create_review_markup(user_id, count):
+    markup = types.InlineKeyboardMarkup()
+    metrics = user_metrics.get(user_id, {})
+
+    # Создаем кнопки для редактирования
+    for i in range(1, count + 1):
+        btn_text = f"Счетчик {i}: {metrics.get(f'c{i}', '—')}"
+        markup.add(types.InlineKeyboardButton(btn_text, callback_data=f'edit_{i}'))
+
+    # Кнопки подтверждения/отмены
+    markup.row(
+        types.InlineKeyboardButton("✅ Подтвердить все", callback_data='confirm_all'),
+        types.InlineKeyboardButton("↩️ Назад к редактированию", callback_data='back_edit')
+    )
+    return markup
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('edit_'))
+def handle_edit(call):
+    user_id = call.from_user.id
+    meter_num = call.data.split('_')[1]
+    current_editing[user_id] = meter_num
+
+    # Запрашиваем новое значение
+    msg = bot.send_message(
+        call.message.chat.id,
+        f"Введите новое значение для счетчика {meter_num}:"
+    )
+    bot.register_next_step_handler(msg, process_meter_value)
+    try:
+        bot.delete_message(call.message.chat.id, call.message.message_id)
+    except:
+        pass
+
+
+@bot.callback_query_handler(func=lambda call: call.data == 'confirm_all')
+def handle_final_confirm(call):
+    user_id = call.from_user.id
+    metrics = user_metrics.get(user_id, {})
+
+    # Формируем отчет
+    report = "\n".join([f"Счетчик {i}: {metrics.get(f'c{i}', '—')}"
+                        for i in range(1, flats[registered_users[user_id]] + 1)])
+
+    # Отправляем админу
+    bot.send_message(
+        ADMIN_ID,
+        f"📨 Новые показания от квартиры {registered_users[user_id]}:\n{report}"
+    )
+
+    # Очищаем данные
+    if user_id in user_metrics:
+        del user_metrics[user_id]
+
+    # Уведомляем пользователя
+    bot.send_message(call.message.chat.id, "✅ Показания успешно отправлены!")
+    try:
+        bot.delete_message(call.message.chat.id, call.message.message_id)
+    except:
+        pass
+
+@bot.callback_query_handler(func=lambda call: call.data == 'back_edit')
+def handle_back_edit(call):
+    show_meters_menu(call.message.chat.id, call.from_user.id)
+    try:
+        bot.delete_message(call.message.chat.id, call.message.message_id)
+    except:
+        pass
+
+
+
+def show_review_menu(chat_id, user_id):
+    apartment = registered_users[user_id]
+    count = flats[apartment]
+    now = datetime.now()
+    month = months[now.month]
+
+    markup = create_review_markup(user_id, count)
+    bot.send_message(
+        chat_id,
+        f"📝 Проверьте показания за {month} {now.year}:\n"
+        "Нажмите на счетчик для изменения значения",
+        reply_markup=markup
+    )
+
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('meter_'))
@@ -155,7 +243,6 @@ def handle_meter_select(call):
     msg = bot.send_message(call.message.chat.id,
                            f"Введите показания для счетчика {meter_num} (только число):")
     bot.register_next_step_handler(msg, process_meter_value)
-
 
 def process_meter_value(message):
     user_id = message.from_user.id
@@ -179,7 +266,6 @@ def process_meter_value(message):
     # Показываем обновленное меню
     show_meters_menu(message.chat.id, user_id)
 
-
 def show_meters_menu(chat_id, user_id):
     if user_id not in registered_users:
         return
@@ -194,7 +280,6 @@ def show_meters_menu(chat_id, user_id):
                      f"📊 Передача показаний за {month} {now.year}\n"
                      f"Выберите счетчик:",
                      reply_markup=markup)
-
 
 @bot.callback_query_handler(func=lambda call: call.data in ['confirm', 'cancel'])
 def handle_actions(call):
@@ -223,7 +308,14 @@ def handle_actions(call):
     except:
         pass
 
-## TODO: Перед подтвержением персмотреть все показания
+@bot.callback_query_handler(func=lambda call: call.data == 'review')
+def handle_review(call):
+    show_review_menu(call.message.chat.id, call.from_user.id)
+    try:
+        bot.delete_message(call.message.chat.id, call.message.message_id)
+    except:
+        pass
+
 @bot.message_handler(commands=['send'])
 def send_data(message):
     user_id = message.from_user.id
@@ -238,6 +330,7 @@ def send_data(message):
 
     count = flats[apartment]
     show_meters_menu(message.chat.id, user_id)
+
 
 def check_monthly_notification():
     """Проверяем, нужно ли отправлять уведомление"""
