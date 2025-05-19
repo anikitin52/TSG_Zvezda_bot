@@ -10,7 +10,6 @@ bot = TeleBot(BOT_TOKEN)
 # Хранилище данных: {user_id: apartment_number}
 registered_users = {}
 flats = {}  # {flat : meters_count }
-
 user_metrics = {}  # {user_id: {'c1': value, 'c2': value, ...}}
 current_editing = {}  # {user_id: current_editing_counter}
 
@@ -289,7 +288,7 @@ def handle_actions(call):
         metrics = user_metrics.get(user_id, {})
         report = "\n".join([f"{k}: {v}" for k, v in metrics.items()])
         bot.send_message(ADMIN_ID,
-                         f"Новые показания от квартиры {registered_users[user_id]}:\n{report}")
+                         f"✉ Новые показания от квартиры {registered_users[user_id]}:\n{report}")
 
         # Очищаем данные
         if user_id in user_metrics:
@@ -364,7 +363,7 @@ def send_notification():
 @bot.message_handler()
 def admin_auth(message):
     if message.text == ADMIN_CODE:
-        bot.send_message(message.chat.id, "Вы получили права администратора")
+        bot.send_message(message.chat.id, "🖥 Вы получили права администратора")
         ADMIN_ID = message.chat.id
 
 if __name__ == "__main__":
