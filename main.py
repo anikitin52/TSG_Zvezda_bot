@@ -1,4 +1,4 @@
-from config import BOT_TOKEN, ADMIN_ID
+from config import BOT_TOKEN, ADMIN_ID, ADMIN_CODE
 from telebot import TeleBot, types
 from datetime import date, datetime
 import schedule
@@ -361,6 +361,11 @@ def send_notification():
         except Exception as e:
             print(f"Ошибка отправки пользователю {user_id}: {e}")
 
+@bot.message_handler()
+def admin_auth(message):
+    if message.text == ADMIN_CODE:
+        bot.send_message(message.chat.id, "Вы получили права администратора")
+        ADMIN_ID = message.chat.id
 
 if __name__ == "__main__":
     # Запуск проверки уведомлений в отдельном потоке
