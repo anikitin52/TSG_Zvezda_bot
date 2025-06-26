@@ -22,37 +22,39 @@ notification_time = [25, 18, 00] # Время напоминания. День, 
 # Запуск бота
 @bot.message_handler(commands=['start'])
 def start(message):
-    print(f'{datetime.now()} Пользователь {message.chat.id} запустил бота')
-    # Создание базы данных
+    user_id = message.from_user.id
+    print(f'{datetime.now()} Пользователь {user_id} запустил бота')
+
+    # Подключение к базе данных
     conn = sqlite3.connect('users.sql')
     cur = conn.cursor()
 
-    # Создание таблицы (если не существует)
+    # Создание таблицы, если не существует
     cur.execute("""
-    CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        telegram_id INTEGER,
-        apartment INTEGER,
-        meters_count INTEGER
-    )
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            telegram_id INTEGER,
+            apartment INTEGER,
+            meters_count INTEGER
+        )
     """)
-    print(f'{datetime.now()} Подключена база данных users')
+    print(f'{datetime.now()} Таблица users проверена или создана')
 
-    # Получение всех пользователей
-    cur.execute("SELECT * FROM users")
-    users = cur.fetchall()
+    # Поиск пользователя по telegram_id
+    cur.execute("SELECT apartment FROM users WHERE telegram_id = ?", (user_id,))
+    result = cur.fetchone()
 
-    conn.commit()
     cur.close()
     conn.close()
 
-    user_id = message.from_user.id
-    if user_id in users:
-        bot.send_message(message.chat.id, f"Вы уже зарегистрированы! Квартира: {users[user_id].apartment}")
+    if result:
+        apartment = result[0]
+        bot.send_message(message.chat.id, f"✅ Вы уже зарегистрированы! Квартира: {apartment}")
     else:
         markup = types.InlineKeyboardMarkup()
         markup.add(types.InlineKeyboardButton("Зарегистрироваться", callback_data='register'))
-        bot.send_message(message.chat.id, "Добро пожаловать!", reply_markup=markup)
+        bot.send_message(message.chat.id, "👋 Добро пожаловать! Для начала зарегистрируйтесь:", reply_markup=markup)
+
 
 # Регистрация пользователя
 @bot.callback_query_handler(func=lambda call: call.data == 'register')
@@ -230,6 +232,7 @@ def confirm_all(call):
     user.clear_metrics()
     temp_users.pop(call.from_user.id, None)
     bot.send_message(call.message.chat.id, "✅ Показания отправлены")
+    print(f'{datetime.now()} Показания переданы. Квартира {user.apartment}')
 
 @bot.callback_query_handler(func=lambda call: call.data == 'back_edit')
 def back_edit(call):
@@ -258,7 +261,7 @@ def admin_auth(message):
         global ADMIN_ID
         ADMIN_ID = message.chat.id
         bot.send_message(message.chat.id, "✅ Вы авторизованы как админ")
-        print(f'{datetime.now()} Админ авторизован. ID = {message.chat.id}')
+        print(f'{datetime.now()} Админ авторизован. ID = {message.chat.id}: {message.from_user.first_name} {message.from_user.last_name}')
 
 
 # Ежемесячное напоминание
@@ -266,14 +269,28 @@ def send_monthly_notifications():
     while True:
         now = datetime.now()
         if now.day == notification_time[0] and now.hour == notification_time[1] and now.minute == notification_time[2]:
-            for user in users.values():
+            conn = sqlite3.connect('users.sql')
+            cur = conn.cursor()
+            cur.execute("SELECT telegram_id, apartment, meters_count FROM users")
+            rows = cur.fetchall()
+            cur.close()
+            conn.close()
+            # TODO: Если пользователь уже отправлял в этом месяце, то не отправлять
+            for row in rows:
+                telegram_id, apartment, meters_count = row
+                # Кэшируем пользователя, если ещё нет
+                if telegram_id not in temp_users:
+                    temp_users[telegram_id] = User(telegram_id, apartment, meters_count)
+
                 try:
-                    bot.send_message(user.telegram_id, "📢 Время передать показания! /send")
-                    print(f'{now} Напоминание отправлено')
+                    bot.send_message(telegram_id, "📢 Время передать показания! /send")
+                    print(f'{now} Напоминание отправлено пользователю {telegram_id}')
                 except Exception as e:
-                    print(f"{now} Ошибка отправки {user.telegram_id}: {e}")
-            time.sleep(3600)  # 1 час паузы
+                    print(f"{now} Ошибка отправки {telegram_id}: {e}")
+
+            time.sleep(3600)  # Пауза 1 час, чтобы не слать много раз в минуту
         time.sleep(60)
+
 
 # Запуск
 if __name__ == '__main__':
