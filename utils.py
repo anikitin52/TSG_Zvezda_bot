@@ -1,16 +1,19 @@
 from telebot import types
 from datetime import datetime
 
+#
 months = {
     1: 'январь', 2: 'февраль', 3: 'март', 4: 'апрель',
     5: 'май', 6: 'июнь', 7: 'июль', 8: 'август',
     9: 'сентябрь', 10: 'октябрь', 11: 'ноябрь', 12: 'декабрь'
 }
 
+#
 def get_month():
     now = datetime.now()
     return months[now.month], now.year
 
+# Создание кнопок для ввода показаний
 def create_meters_markup(user):
     markup = types.InlineKeyboardMarkup()
     for i in range(1, user.meters_count + 1):
@@ -23,6 +26,7 @@ def create_meters_markup(user):
     markup.add(types.InlineKeyboardButton("🚫 Отменить ввод", callback_data='cancel'))
     return markup
 
+# Создание кнопок для записи показаний
 def create_review_markup(user):
     markup = types.InlineKeyboardMarkup()
     for i in range(1, user.meters_count + 1):

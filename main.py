@@ -1,7 +1,7 @@
 from telebot import TeleBot, types
 from config import BOT_TOKEN, ADMIN_ID, ADMIN_CODE
 from user import User
-from utils import get_month, create_meters_markup, create_review_markup
+from utils import *
 from datetime import datetime
 import threading
 import time
@@ -11,7 +11,7 @@ bot = TeleBot(BOT_TOKEN)
 users = {}  # telegram_id -> User
 current_editing = {}  # telegram_id -> current meter number
 
-
+# Запуск бота
 @bot.message_handler(commands=['start'])
 def start(message):
     user_id = message.from_user.id
@@ -22,12 +22,13 @@ def start(message):
         markup.add(types.InlineKeyboardButton("Зарегистрироваться", callback_data='register'))
         bot.send_message(message.chat.id, "Добро пожаловать!", reply_markup=markup)
 
-
+# Регистрация пользователя
 @bot.callback_query_handler(func=lambda call: call.data == 'register')
 def register(call):
     msg = bot.send_message(call.message.chat.id, "Введите номер вашей квартиры (1–150):")
     bot.register_next_step_handler(msg, process_apartment)
 
+# Настройка квартиры
 def process_apartment(message):
     try:
         apartment = int(message.text.strip())
@@ -50,6 +51,7 @@ def process_apartment(message):
     )
     bot.send_message(message.chat.id, "Выберите количество счетчиков:", reply_markup=markup)
 
+# Завершение настройки квартиры
 @bot.callback_query_handler(func=lambda call: call.data.startswith('meters_'))
 def select_meters(call):
     _, count, apartment = call.data.split('_')
@@ -59,6 +61,7 @@ def select_meters(call):
     bot.send_message(call.message.chat.id, "✅ Регистрация успешна! Перейдите в профиль: /account")
     bot.send_message(ADMIN_ID, f"Новый пользователь: кв. {apartment}, счетчиков: {count}")
 
+# Переход в профиль
 @bot.message_handler(commands=['account'])
 def account(message):
     user = users.get(message.from_user.id)
@@ -67,6 +70,7 @@ def account(message):
     else:
         bot.send_message(message.chat.id, "Вы не зарегистрированы. /start")
 
+# Отправка показаний
 @bot.message_handler(commands=['send'])
 def send_data(message):
     user = users.get(message.from_user.id)
@@ -77,6 +81,7 @@ def send_data(message):
     markup = create_meters_markup(user)
     bot.send_message(message.chat.id, f"📊 Показания за {month} {year}", reply_markup=markup)
 
+# Ввод показаний
 @bot.callback_query_handler(func=lambda call: call.data.startswith('meter_'))
 def meter_input(call):
     meter = call.data.split('_')[1]
@@ -84,6 +89,7 @@ def meter_input(call):
     msg = bot.send_message(call.message.chat.id, f"Введите показания для счетчика {meter}:")
     bot.register_next_step_handler(msg, process_value)
 
+# Проверка показаний
 @bot.callback_query_handler(func=lambda call: call.data == 'review')
 def review(call):
     user = users.get(call.from_user.id)
@@ -91,6 +97,7 @@ def review(call):
     month, year = get_month()
     bot.send_message(call.message.chat.id, f"📝 Проверка за {month} {year}", reply_markup=markup)
 
+# Изменение поакзаний
 @bot.callback_query_handler(func=lambda call: call.data.startswith('edit_'))
 def edit_value(call):
     meter = call.data.split('_')[1]
@@ -98,6 +105,7 @@ def edit_value(call):
     msg = bot.send_message(call.message.chat.id, f"Введите новое значение для счетчика {meter}:")
     bot.register_next_step_handler(msg, process_value)
 
+# Отправка показаний
 @bot.callback_query_handler(func=lambda call: call.data == 'confirm_all')
 def confirm_all(call):
     user = users.get(call.from_user.id)
@@ -106,6 +114,7 @@ def confirm_all(call):
     user.clear_metrics()
     bot.send_message(call.message.chat.id, "✅ Показания отправлены")
 
+# Редактироване показаний
 @bot.callback_query_handler(func=lambda call: call.data == 'back_edit')
 def back_edit(call):
     user = users.get(call.from_user.id)
@@ -113,6 +122,7 @@ def back_edit(call):
     month, year = get_month()
     bot.send_message(call.message.chat.id, f"📊 Возврат к редактированию за {month} {year}", reply_markup=markup)
 
+# Отмена ввода
 @bot.callback_query_handler(func=lambda call: call.data == 'cancel')
 def cancel(call):
     user = users.get(call.from_user.id)
@@ -120,7 +130,7 @@ def cancel(call):
         user.clear_metrics()
     bot.send_message(call.message.chat.id, "🚫 Ввод отменен")
 
-
+# Обработка ошибки ввода
 def process_value(message):
     user = users.get(message.from_user.id)
     meter = current_editing.get(message.from_user.id)
@@ -135,7 +145,7 @@ def process_value(message):
         return
     send_data(message)
 
-
+# Авторизация админа
 @bot.message_handler()
 def admin_auth(message):
     if message.text == ADMIN_CODE:
@@ -143,19 +153,23 @@ def admin_auth(message):
         ADMIN_ID = message.chat.id
         bot.send_message(message.chat.id, "✅ Вы авторизованы как админ")
 
-
+# Ежемесячное напоминание
 def send_monthly_notifications():
     while True:
         now = datetime.now()
-        if now.day == 25 and now.hour == 18 and now.minute == 0:
+        if now.day == 26 and now.hour == 11 and now.minute == 21: # TODO: вынести в отдельную переменную
             for user in users.values():
                 try:
                     bot.send_message(user.telegram_id, "📢 Время передать показания! /send")
+                    print(f'{now} Напоминание отправлено')
                 except Exception as e:
                     print(f"Ошибка отправки {user.telegram_id}: {e}")
             time.sleep(3600)  # 1 час паузы
         time.sleep(60)
 
+# Запуск
 if __name__ == '__main__':
+    now = datetime.now()
+    print(f"{now} Бот запущен")
     threading.Thread(target=send_monthly_notifications, daemon=True).start()
     bot.polling(none_stop=True)
