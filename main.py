@@ -10,14 +10,14 @@ import sqlite3
 
 bot = TeleBot(BOT_TOKEN)
 
-users = {}  # telegram_id -> User
+temp_users = {}  # telegram_id -> User
 current_editing = {}  # telegram_id -> current meter number
 
 # Список счетчиков TODO: Заоплнить
 meters5 = []
 meters3 = []
 
-notification_time = [25, 18, 00] # Время напоминания. ДД, ЧЧ, ММ
+notification_time = [25, 18, 00] # Время напоминания. День, час, минута
 
 # Запуск бота
 @bot.message_handler(commands=['start'])
@@ -27,6 +27,7 @@ def start(message):
     conn = sqlite3.connect('users.sql')
     cur = conn.cursor()
 
+    # Создание таблицы (если не существует)
     cur.execute("""
     CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -36,6 +37,10 @@ def start(message):
     )
     """)
     print(f'{datetime.now()} Подключена база данных users')
+
+    # Получение всех пользователей
+    cur.execute("SELECT * FROM users")
+    users = cur.fetchall()
 
     conn.commit()
     cur.close()
@@ -66,8 +71,19 @@ def process_apartment(message):
         bot.register_next_step_handler(msg, process_apartment)
         return
 
+    conn = sqlite3.connect('users.sql')
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT * FROM USERS
+        """)
+    print(f'{datetime.now()} Подключена база данных users')
+    users = cur.fetchall()
+    conn.commit()
+    cur.close()
+    conn.close()
+
     user_id = message.from_user.id
-    if any(u.apartment == apartment for u in users.values()):
+    if any(u[2] == apartment for u in users):
         bot.send_message(message.chat.id, "❌ Квартира уже зарегистрирована")
         return
 
@@ -83,15 +99,13 @@ def process_apartment(message):
 def select_meters(call):
     _, count, apartment = call.data.split('_')
     user_id = call.from_user.id
-    users[user_id] = User(user_id, int(apartment), int(count))
 
-    # Регистрация пользователя
+    # Добавляем пользователя в базу данных
     conn = sqlite3.connect('users.sql')
     cur = conn.cursor()
-    cur.execute(f"""
-        INSERT INTO users (telegram_id, apartment, meters_count) VALUES ({user_id}, {apartment}, {count})
-        """)
-    print(f'{datetime.now()} Пользователь {user_id} внесен в базу данных users')
+    cur.execute("""
+        INSERT INTO users (telegram_id, apartment, meters_count) VALUES (?, ?, ?)
+    """, (user_id, int(apartment), int(count)))
     conn.commit()
     cur.close()
     conn.close()
@@ -99,6 +113,7 @@ def select_meters(call):
     bot.send_message(call.message.chat.id, "✅ Регистрация успешна! Перейдите в профиль: /account")
     bot.send_message(ADMIN_ID, f"Новый пользователь: кв. {apartment}, счетчиков: {count}")
     print(f'{datetime.now()} Новый пользователь. Квартира {apartment}')
+
 
 # Переход в профиль
 @bot.message_handler(commands=['account'])
