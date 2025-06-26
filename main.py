@@ -1,12 +1,11 @@
 from telebot import TeleBot, types
-from config import BOT_TOKEN, ADMIN_ID, ADMIN_CODE
+from config import BOT_TOKEN, ADMIN_ID, ADMIN_CODE, MANAGER_CODE, MANAGER_ID
 from user import User
 from utils import *
 from datetime import datetime
 import threading
 import time
 import sqlite3
-
 
 bot = TeleBot(BOT_TOKEN)
 
@@ -253,6 +252,17 @@ def cancel(call):
         temp_users.pop(call.from_user.id, None)
     bot.send_message(call.message.chat.id, "🚫 Ввод отменён")
 
+# Обработка обращения
+@bot.message_handler(commands=['address'])
+def address(message):
+    msg = bot.send_message(message.chat.id, "✉️ Напишите своё обращение к председателю ТСЖ")
+    bot.register_next_step_handler(msg, send_address)
+
+def send_address(message):
+    text = message.text.strip()
+    bot.send_message(MANAGER_ID, f'📨 Обращение от жителя:\n{text}')
+    bot.send_message(message.chat.id, "✅ Обращение успешно отправлено председателю")
+    print(f'{datetime.now()} Отправлено обращение к председателю от {message.from_user.id}')
 
 # Авторизация админа
 @bot.message_handler()
@@ -262,6 +272,16 @@ def admin_auth(message):
         ADMIN_ID = message.chat.id
         bot.send_message(message.chat.id, "✅ Вы авторизованы как админ")
         print(f'{datetime.now()} Админ авторизован. ID = {message.chat.id}: {message.from_user.first_name} {message.from_user.last_name}')
+
+    if message.text == MANAGER_CODE:
+        global MANAGER_ID
+        MANAGER_ID = message.chat.id
+        bot.send_message(message.chat.id, "✅ Вы авторизованы как председатель")
+        print(f'{datetime.now()} Председатель авторизован. ID = {message.chat.id}: {message.from_user.first_name} {message.from_user.last_name}')
+
+    else:
+        bot.send_message(message.chat.id, "Ошибка ввода")
+
 
 
 # Ежемесячное напоминание
@@ -290,6 +310,9 @@ def send_monthly_notifications():
 
             time.sleep(3600)  # Пауза 1 час, чтобы не слать много раз в минуту
         time.sleep(60)
+
+
+
 
 
 # Запуск
