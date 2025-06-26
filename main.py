@@ -10,8 +10,8 @@ import sqlite3
 
 bot = TeleBot(BOT_TOKEN)
 
-temp_users = {}  # telegram_id -> User
-current_editing = {}  # telegram_id -> current meter number
+temp_users = {}  # временное хранилище User объектов, telegram_id -> User
+current_editing = {}  # telegram_id -> текущий редактируемый счетчик
 
 # Список счетчиков TODO: Заоплнить
 meters5 = []
@@ -144,18 +144,32 @@ def account(message):
             "❌ Вы не зарегистрированы. Для начала нажмите /start"
         )
 
-# Отправка показаний
 @bot.message_handler(commands=['send'])
 def send_data(message):
-    user = users.get(message.from_user.id)
-    if not user:
-        bot.send_message(message.chat.id, "Вы не зарегистрированы")
-        return
+    telegram_id = message.from_user.id
+
+    if telegram_id in temp_users:
+        user = temp_users[telegram_id]
+    else:
+        conn = sqlite3.connect('users.sql')
+        cur = conn.cursor()
+        cur.execute("SELECT apartment, meters_count FROM users WHERE telegram_id = ?", (telegram_id,))
+        user_data = cur.fetchone()
+        cur.close()
+        conn.close()
+
+        if not user_data:
+            bot.send_message(message.chat.id, "Вы не зарегистрированы")
+            return
+
+        apartment, meters_count = user_data
+        user = User(telegram_id, apartment, meters_count)
+        temp_users[telegram_id] = user
+
     month, year = get_month()
     markup = create_meters_markup(user)
     bot.send_message(message.chat.id, f"📊 Показания за {month} {year}", reply_markup=markup)
 
-# Ввод показаний
 @bot.callback_query_handler(func=lambda call: call.data.startswith('meter_'))
 def meter_input(call):
     meter = call.data.split('_')[1]
@@ -163,15 +177,40 @@ def meter_input(call):
     msg = bot.send_message(call.message.chat.id, f"Введите показания для счетчика {meter}:")
     bot.register_next_step_handler(msg, process_value)
 
-# Проверка показаний
+def process_value(message):
+    telegram_id = message.from_user.id
+    user = temp_users.get(telegram_id)
+    meter = current_editing.get(telegram_id)
+
+    if not user or not meter:
+        bot.send_message(message.chat.id, "Ошибка: пользователь или счётчик не найдены")
+        return
+
+    try:
+        value = int(message.text.strip())
+        if value < 0:
+            raise ValueError
+    except:
+        msg = bot.send_message(message.chat.id, "❌ Введите положительное число")
+        bot.register_next_step_handler(msg, process_value)
+        return
+
+    user.add_metric(meter, value)
+
+    month, year = get_month()
+    markup = create_meters_markup(user)
+    bot.send_message(message.chat.id, f"Показания для счетчика {meter} сохранены.\n📊 Показания за {month} {year}", reply_markup=markup)
+
 @bot.callback_query_handler(func=lambda call: call.data == 'review')
 def review(call):
-    user = users.get(call.from_user.id)
+    user = temp_users.get(call.from_user.id)
+    if not user:
+        bot.send_message(call.message.chat.id, "Ошибка: пользователь не найден")
+        return
     markup = create_review_markup(user)
     month, year = get_month()
     bot.send_message(call.message.chat.id, f"📝 Проверка за {month} {year}", reply_markup=markup)
 
-# Изменение поакзаний
 @bot.callback_query_handler(func=lambda call: call.data.startswith('edit_'))
 def edit_value(call):
     meter = call.data.split('_')[1]
@@ -179,46 +218,38 @@ def edit_value(call):
     msg = bot.send_message(call.message.chat.id, f"Введите новое значение для счетчика {meter}:")
     bot.register_next_step_handler(msg, process_value)
 
-# Отправка показаний
 @bot.callback_query_handler(func=lambda call: call.data == 'confirm_all')
 def confirm_all(call):
-    user = users.get(call.from_user.id)
+    user = temp_users.get(call.from_user.id)
+    if not user:
+        bot.send_message(call.message.chat.id, "Ошибка: пользователь не найден")
+        return
+
     report = user.get_report()
     bot.send_message(ADMIN_ID, f"📨 Показания от кв. {user.apartment}:\n{report}")
     user.clear_metrics()
+    temp_users.pop(call.from_user.id, None)
     bot.send_message(call.message.chat.id, "✅ Показания отправлены")
-    print(f'{datetime.now()} Отправлены показания. Квартира {user.apartment}')
 
-# Редактироване показаний
 @bot.callback_query_handler(func=lambda call: call.data == 'back_edit')
 def back_edit(call):
-    user = users.get(call.from_user.id)
+    user = temp_users.get(call.from_user.id)
+    if not user:
+        bot.send_message(call.message.chat.id, "Ошибка: пользователь не найден")
+        return
+
     markup = create_meters_markup(user)
     month, year = get_month()
     bot.send_message(call.message.chat.id, f"📊 Возврат к редактированию за {month} {year}", reply_markup=markup)
 
-# Отмена ввода
 @bot.callback_query_handler(func=lambda call: call.data == 'cancel')
 def cancel(call):
-    user = users.get(call.from_user.id)
+    user = temp_users.get(call.from_user.id)
     if user:
         user.clear_metrics()
-    bot.send_message(call.message.chat.id, "🚫 Ввод отменен")
+        temp_users.pop(call.from_user.id, None)
+    bot.send_message(call.message.chat.id, "🚫 Ввод отменён")
 
-# Обработка ошибки ввода
-def process_value(message):
-    user = users.get(message.from_user.id)
-    meter = current_editing.get(message.from_user.id)
-    try:
-        value = int(message.text.strip())
-        if value < 0:
-            raise ValueError
-        user.add_metric(meter, value)
-    except:
-        msg = bot.send_message(message.chat.id, "❌ Введите положительное число")
-        bot.register_next_step_handler(msg, process_value)
-        return
-    send_data(message)
 
 # Авторизация админа
 @bot.message_handler()
