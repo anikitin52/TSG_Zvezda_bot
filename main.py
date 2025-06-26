@@ -60,6 +60,7 @@ def select_meters(call):
 
     bot.send_message(call.message.chat.id, "✅ Регистрация успешна! Перейдите в профиль: /account")
     bot.send_message(ADMIN_ID, f"Новый пользователь: кв. {apartment}, счетчиков: {count}")
+    print(f'{datetime.now()} Новый пользователь. Квартира {apartment}')
 
 # Переход в профиль
 @bot.message_handler(commands=['account'])
@@ -113,6 +114,7 @@ def confirm_all(call):
     bot.send_message(ADMIN_ID, f"📨 Показания от кв. {user.apartment}:\n{report}")
     user.clear_metrics()
     bot.send_message(call.message.chat.id, "✅ Показания отправлены")
+    print(f'{datetime.now()} Отправлены показания. Квартира {user.apartment}')
 
 # Редактироване показаний
 @bot.callback_query_handler(func=lambda call: call.data == 'back_edit')
@@ -152,6 +154,8 @@ def admin_auth(message):
         global ADMIN_ID
         ADMIN_ID = message.chat.id
         bot.send_message(message.chat.id, "✅ Вы авторизованы как админ")
+        print(f'{datetime.now()} Админ авторизован. ID = {message.chat.id}')
+
 
 # Ежемесячное напоминание
 def send_monthly_notifications():
