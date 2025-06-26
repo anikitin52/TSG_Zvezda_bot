@@ -5,15 +5,42 @@ from utils import *
 from datetime import datetime
 import threading
 import time
+import sqlite3
+
 
 bot = TeleBot(BOT_TOKEN)
 
 users = {}  # telegram_id -> User
 current_editing = {}  # telegram_id -> current meter number
 
+# Список счетчиков TODO: Заоплнить
+meters5 = []
+meters3 = []
+
+notification_time = [25, 18, 00] # Время напоминания. ДД, ЧЧ, ММ
+
 # Запуск бота
 @bot.message_handler(commands=['start'])
 def start(message):
+    print(f'{datetime.now()} Пользователь {message.chat.id} запустил бота')
+    # Создание базы данных
+    conn = sqlite3.connect('users.sql')
+    cur = conn.cursor()
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        telegram_id INTEGER,
+        apartment INTEGER,
+        meters_count INTEGER
+    )
+    """)
+    print(f'{datetime.now()} Подключена база данных users')
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
     user_id = message.from_user.id
     if user_id in users:
         bot.send_message(message.chat.id, f"Вы уже зарегистрированы! Квартира: {users[user_id].apartment}")
@@ -58,6 +85,17 @@ def select_meters(call):
     user_id = call.from_user.id
     users[user_id] = User(user_id, int(apartment), int(count))
 
+    # Регистрация пользователя
+    conn = sqlite3.connect('users.sql')
+    cur = conn.cursor()
+    cur.execute(f"""
+        INSERT INTO users (telegram_id, apartment, meters_count) VALUES ({user_id}, {apartment}, {count})
+        """)
+    print(f'{datetime.now()} Пользователь {user_id} внесен в базу данных users')
+    conn.commit()
+    cur.close()
+    conn.close()
+
     bot.send_message(call.message.chat.id, "✅ Регистрация успешна! Перейдите в профиль: /account")
     bot.send_message(ADMIN_ID, f"Новый пользователь: кв. {apartment}, счетчиков: {count}")
     print(f'{datetime.now()} Новый пользователь. Квартира {apartment}')
@@ -65,11 +103,31 @@ def select_meters(call):
 # Переход в профиль
 @bot.message_handler(commands=['account'])
 def account(message):
-    user = users.get(message.from_user.id)
-    if user:
-        bot.send_message(message.chat.id, f"Квартира: {user.apartment}\nСчетчиков: {user.meters_count}")
+    telegram_id = message.from_user.id
+
+    conn = sqlite3.connect('users.sql')
+    cur = conn.cursor()
+
+    # Ищем пользователя по telegram_id
+    cur.execute("""
+        SELECT apartment, meters_count FROM users WHERE telegram_id = ?
+    """, (telegram_id,))
+
+    result = cur.fetchone()
+    cur.close()
+    conn.close()
+
+    if result:
+        apartment, meters_count = result
+        bot.send_message(
+            message.chat.id,
+            f"🏠 Ваш профиль:\nКвартира: {apartment}\nСчётчиков: {meters_count}"
+        )
     else:
-        bot.send_message(message.chat.id, "Вы не зарегистрированы. /start")
+        bot.send_message(
+            message.chat.id,
+            "❌ Вы не зарегистрированы. Для начала нажмите /start"
+        )
 
 # Отправка показаний
 @bot.message_handler(commands=['send'])
@@ -161,13 +219,13 @@ def admin_auth(message):
 def send_monthly_notifications():
     while True:
         now = datetime.now()
-        if now.day == 26 and now.hour == 11 and now.minute == 21: # TODO: вынести в отдельную переменную
+        if now.day == notification_time[0] and now.hour == notification_time[1] and now.minute == notification_time[2]:
             for user in users.values():
                 try:
                     bot.send_message(user.telegram_id, "📢 Время передать показания! /send")
                     print(f'{now} Напоминание отправлено')
                 except Exception as e:
-                    print(f"Ошибка отправки {user.telegram_id}: {e}")
+                    print(f"{now} Ошибка отправки {user.telegram_id}: {e}")
             time.sleep(3600)  # 1 час паузы
         time.sleep(60)
 
