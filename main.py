@@ -12,11 +12,11 @@ bot = TeleBot(BOT_TOKEN)
 temp_users = {}  # временное хранилище User объектов, telegram_id -> User
 current_editing = {}  # telegram_id -> текущий редактируемый счетчик
 
-# Список счетчиков TODO: Заоплнить
-meters5 = []
-meters3 = []
+# Список счетчиков TODO: Заменить везде количество
+meters6 = ["ГВС-Кухня", "ХВС-Кухня", "ГВС-Ванная", "ХВС-Ванная", "Электричество-День", "Электричество-Ночь"]
+meters4 = ["ГВС", "ХВС", "Электричество-День", "Электричество-Ночь"]
+notification_time = [25, 18, 00]  # Время напоминания. День, час, минута
 
-notification_time = [25, 18, 00] # Время напоминания. День, час, минута
 
 # Запуск бота
 @bot.message_handler(commands=['start'])
@@ -61,6 +61,7 @@ def register(call):
     msg = bot.send_message(call.message.chat.id, "Введите номер вашей квартиры (1–150):")
     bot.register_next_step_handler(msg, process_apartment)
 
+
 # Настройка квартиры
 def process_apartment(message):
     try:
@@ -90,10 +91,11 @@ def process_apartment(message):
 
     markup = types.InlineKeyboardMarkup()
     markup.add(
-        types.InlineKeyboardButton("3 счетчика", callback_data=f"meters_3_{apartment}"),
-        types.InlineKeyboardButton("5 счетчиков", callback_data=f"meters_5_{apartment}")
+        types.InlineKeyboardButton("4 счетчика", callback_data=f"meters_4_{apartment}"),
+        types.InlineKeyboardButton("6 счетчиков", callback_data=f"meters_6_{apartment}")
     )
     bot.send_message(message.chat.id, "Выберите количество счетчиков:", reply_markup=markup)
+
 
 # Завершение настройки квартиры
 @bot.callback_query_handler(func=lambda call: call.data.startswith('meters_'))
@@ -145,6 +147,7 @@ def account(message):
             "❌ Вы не зарегистрированы. Для начала нажмите /start"
         )
 
+
 @bot.message_handler(commands=['send'])
 def send_data(message):
     telegram_id = message.from_user.id
@@ -171,12 +174,14 @@ def send_data(message):
     markup = create_meters_markup(user)
     bot.send_message(message.chat.id, f"📊 Показания за {month} {year}", reply_markup=markup)
 
+
 @bot.callback_query_handler(func=lambda call: call.data.startswith('meter_'))
 def meter_input(call):
     meter = call.data.split('_')[1]
     current_editing[call.from_user.id] = meter
-    msg = bot.send_message(call.message.chat.id, f"Введите показания для счетчика {meter}:")
+    msg = bot.send_message(call.message.chat.id, f"Введите показания для выбранного счетчика:")
     bot.register_next_step_handler(msg, process_value)
+
 
 def process_value(message):
     telegram_id = message.from_user.id
@@ -200,7 +205,9 @@ def process_value(message):
 
     month, year = get_month()
     markup = create_meters_markup(user)
-    bot.send_message(message.chat.id, f"Показания для счетчика {meter} сохранены.\n📊 Показания за {month} {year}", reply_markup=markup)
+    bot.send_message(message.chat.id, f"Показания для счетчика {meter} сохранены.\n📊 Показания за {month} {year}",
+                     reply_markup=markup)
+
 
 @bot.callback_query_handler(func=lambda call: call.data == 'review')
 def review(call):
@@ -212,12 +219,14 @@ def review(call):
     month, year = get_month()
     bot.send_message(call.message.chat.id, f"📝 Проверка за {month} {year}", reply_markup=markup)
 
+
 @bot.callback_query_handler(func=lambda call: call.data.startswith('edit_'))
 def edit_value(call):
     meter = call.data.split('_')[1]
     current_editing[call.from_user.id] = meter
     msg = bot.send_message(call.message.chat.id, f"Введите новое значение для счетчика {meter}:")
     bot.register_next_step_handler(msg, process_value)
+
 
 @bot.callback_query_handler(func=lambda call: call.data == 'confirm_all')
 def confirm_all(call):
@@ -233,6 +242,7 @@ def confirm_all(call):
     bot.send_message(call.message.chat.id, "✅ Показания отправлены")
     print(f'{datetime.now()} Показания переданы. Квартира {user.apartment}')
 
+
 @bot.callback_query_handler(func=lambda call: call.data == 'back_edit')
 def back_edit(call):
     user = temp_users.get(call.from_user.id)
@@ -244,6 +254,7 @@ def back_edit(call):
     month, year = get_month()
     bot.send_message(call.message.chat.id, f"📊 Возврат к редактированию за {month} {year}", reply_markup=markup)
 
+
 @bot.callback_query_handler(func=lambda call: call.data == 'cancel')
 def cancel(call):
     user = temp_users.get(call.from_user.id)
@@ -252,17 +263,46 @@ def cancel(call):
         temp_users.pop(call.from_user.id, None)
     bot.send_message(call.message.chat.id, "🚫 Ввод отменён")
 
+
 # Обработка обращения
 @bot.message_handler(commands=['address'])
 def address(message):
     msg = bot.send_message(message.chat.id, "✉️ Напишите своё обращение к председателю ТСЖ")
     bot.register_next_step_handler(msg, send_address)
 
+
 def send_address(message):
     text = message.text.strip()
-    bot.send_message(MANAGER_ID, f'📨 Обращение от жителя:\n{text}')
+    sender_id = message.from_user.id
+    sender_name = message.from_user.first_name or ""
+    sender_surname = message.from_user.last_name or ""
+
+    # Получаем номер квартиры из базы данных
+    conn = sqlite3.connect('users.sql')
+    cur = conn.cursor()
+    cur.execute("SELECT apartment FROM users WHERE telegram_id = ?", (sender_id,))
+    result = cur.fetchone()
+    cur.close()
+    conn.close()
+
+    if result:
+        apartment = result[0]
+    else:
+        apartment = "Неизвестна"
+
+    # Отправка сообщения председателю
+    bot.send_message(
+        MANAGER_ID,
+        f'📨 Обращение от жителя:\n'
+        f'👤 {sender_name} {sender_surname}\n'
+        f'🏠 Квартира: {apartment}\n\n'
+        f'_{text}_',
+        parse_mode="Markdown"
+    )
     bot.send_message(message.chat.id, "✅ Обращение успешно отправлено председателю")
-    print(f'{datetime.now()} Отправлено обращение к председателю от {message.from_user.id}')
+    print(f'{datetime.now()} Обращение отправлено. Кв. {apartment}, ID {sender_id}')
+
+
 
 # Авторизация админа
 @bot.message_handler()
@@ -271,17 +311,18 @@ def admin_auth(message):
         global ADMIN_ID
         ADMIN_ID = message.chat.id
         bot.send_message(message.chat.id, "✅ Вы авторизованы как админ")
-        print(f'{datetime.now()} Админ авторизован. ID = {message.chat.id}: {message.from_user.first_name} {message.from_user.last_name}')
+        print(
+            f'{datetime.now()} Админ авторизован. ID = {message.chat.id}: {message.from_user.first_name} {message.from_user.last_name}')
 
     if message.text == MANAGER_CODE:
         global MANAGER_ID
         MANAGER_ID = message.chat.id
         bot.send_message(message.chat.id, "✅ Вы авторизованы как председатель")
-        print(f'{datetime.now()} Председатель авторизован. ID = {message.chat.id}: {message.from_user.first_name} {message.from_user.last_name}')
+        print(
+            f'{datetime.now()} Председатель авторизован. ID = {message.chat.id}: {message.from_user.first_name} {message.from_user.last_name}')
 
     else:
         bot.send_message(message.chat.id, "Ошибка ввода")
-
 
 
 # Ежемесячное напоминание
@@ -310,9 +351,6 @@ def send_monthly_notifications():
 
             time.sleep(3600)  # Пауза 1 час, чтобы не слать много раз в минуту
         time.sleep(60)
-
-
-
 
 
 # Запуск

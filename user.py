@@ -1,3 +1,5 @@
+meters6 = ["ГВС-Кухня", "ХВС-Кухня", "ГВС-Ванная", "ХВС-Ванная", "Электричество-День", "Электричество-Ночь"]
+meters4 = ["ГВС", "ХВС", "Электричество-День", "Электричество-Ночь"]
 class User:
     def __init__(self, telegram_id, apartment=None, meters_count=0):
         self.telegram_id = telegram_id
@@ -15,7 +17,14 @@ class User:
         self.metrics = {}
 
     def get_report(self):
+        if self.meters_count == 4:
+            meters = meters4
+        elif self.meters_count == 6:
+            meters = meters6
+        else:
+            return "Ошибка: неизвестное количество счётчиков"
+
         return "\n".join([
-            f"Счетчик {i + 1}: {self.metrics.get(f'c{i + 1}', '—')}"
+            f"{meters[i]}: {self.metrics.get(f'c{i + 1}', '—')}"
             for i in range(self.meters_count)
         ])
