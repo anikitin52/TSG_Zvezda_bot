@@ -1,5 +1,4 @@
-meters6 = ["ГВС-Кухня", "ХВС-Кухня", "ГВС-Ванная", "ХВС-Ванная", "Электричество-День", "Электричество-Ночь"]
-meters4 = ["ГВС", "ХВС", "Электричество-День", "Электричество-Ночь"]
+from data import meters4, meters6
 class User:
     def __init__(self, telegram_id, apartment=None, meters_count=0):
         self.telegram_id = telegram_id

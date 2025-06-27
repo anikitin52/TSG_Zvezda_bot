@@ -1,22 +1,14 @@
 from telebot import TeleBot, types
-from config import BOT_TOKEN, ADMIN_ID, ADMIN_CODE, MANAGER_CODE, MANAGER_ID
-from user import User
+from config import *
+from user import *
 from utils import *
+from data import *
 from datetime import datetime
 import threading
 import time
 import sqlite3
 
 bot = TeleBot(BOT_TOKEN)
-
-temp_users = {}  # временное хранилище User объектов, telegram_id -> User
-current_editing = {}  # telegram_id -> текущий редактируемый счетчик
-
-# Список счетчиков TODO: Заменить везде количество
-meters6 = ["ГВС-Кухня", "ХВС-Кухня", "ГВС-Ванная", "ХВС-Ванная", "Электричество-День", "Электричество-Ночь"]
-meters4 = ["ГВС", "ХВС", "Электричество-День", "Электричество-Ночь"]
-notification_time = [25, 18, 00]  # Время напоминания. День, час, минута
-
 
 # Запуск бота
 @bot.message_handler(commands=['start'])
@@ -60,7 +52,6 @@ def start(message):
 def register(call):
     msg = bot.send_message(call.message.chat.id, "Введите номер вашей квартиры (1–150):")
     bot.register_next_step_handler(msg, process_apartment)
-
 
 # Настройка квартиры
 def process_apartment(message):
@@ -205,7 +196,7 @@ def process_value(message):
 
     month, year = get_month()
     markup = create_meters_markup(user)
-    bot.send_message(message.chat.id, f"Показания для счетчика {meter} сохранены.\n📊 Показания за {month} {year}",
+    bot.send_message(message.chat.id, f"📊 Показания за {month} {year}",
                      reply_markup=markup)
 
 
@@ -224,7 +215,7 @@ def review(call):
 def edit_value(call):
     meter = call.data.split('_')[1]
     current_editing[call.from_user.id] = meter
-    msg = bot.send_message(call.message.chat.id, f"Введите новое значение для счетчика {meter}:")
+    msg = bot.send_message(call.message.chat.id, f"Введите новое значение для выбранного счетчика")
     bot.register_next_step_handler(msg, process_value)
 
 
@@ -236,7 +227,7 @@ def confirm_all(call):
         return
 
     report = user.get_report()
-    bot.send_message(ADMIN_ID, f"📨 Показания от кв. {user.apartment}:\n{report}")
+    bot.send_message(ACCOUNTANT_ID, f"📨 Показания от кв. {user.apartment}:\n{report}")
     user.clear_metrics()
     temp_users.pop(call.from_user.id, None)
     bot.send_message(call.message.chat.id, "✅ Показания отправлены")
@@ -303,10 +294,9 @@ def send_address(message):
     print(f'{datetime.now()} Обращение отправлено. Кв. {apartment}, ID {sender_id}')
 
 
-
-# Авторизация админа
+# Авторизация привелегированных пользователей
 @bot.message_handler()
-def admin_auth(message):
+def auth(message):
     if message.text == ADMIN_CODE:
         global ADMIN_ID
         ADMIN_ID = message.chat.id
@@ -317,12 +307,24 @@ def admin_auth(message):
     if message.text == MANAGER_CODE:
         global MANAGER_ID
         MANAGER_ID = message.chat.id
+        manager = message.from_user
         bot.send_message(message.chat.id, "✅ Вы авторизованы как председатель")
+        bot.send_message(ADMIN_ID,
+                         f'‼ Пользователь {manager.first_name} {manager.last_name} авторизоан как Председатель')
         print(
             f'{datetime.now()} Председатель авторизован. ID = {message.chat.id}: {message.from_user.first_name} {message.from_user.last_name}')
 
-    else:
-        bot.send_message(message.chat.id, "Ошибка ввода")
+    if message.text == ACCOUNTANT_CODE:
+        global ACCOUNTANT_ID
+        ACCOUNTANT_ID = message.chat.id
+        accountant = message.from_user
+        bot.send_message(message.chat.id, "✅ Вы авторизованы как Бухгалтер")
+
+        bot.send_message(ADMIN_ID,
+                         f'‼ Пользователь {accountant.first_name} {accountant.last_name} авторизоан как Бухгалтер')
+        print(
+            f'{datetime.now()} Бухгалтер авторизован. ID = {message.chat.id}: {message.from_user.first_name} {message.from_user.last_name}')
+
 
 
 # Ежемесячное напоминание

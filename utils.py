@@ -1,13 +1,7 @@
 from telebot import types
 from datetime import datetime
-from main import meters4, meters6
-
-#
-months = {
-    1: 'январь', 2: 'февраль', 3: 'март', 4: 'апрель',
-    5: 'май', 6: 'июнь', 7: 'июль', 8: 'август',
-    9: 'сентябрь', 10: 'октябрь', 11: 'ноябрь', 12: 'декабрь'
-}
+from data import meters4, meters6
+from data import months
 
 def get_month():
     now = datetime.now()
