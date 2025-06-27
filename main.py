@@ -26,7 +26,8 @@ def start(message):
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             telegram_id INTEGER,
             apartment INTEGER,
-            meters_count INTEGER
+            water_count INTEGER,
+            electricity_count INTEGER
         )
     """)
     print(f'{datetime.now()} Таблица users проверена или создана')
@@ -66,10 +67,7 @@ def process_apartment(message):
 
     conn = sqlite3.connect('users.sql')
     cur = conn.cursor()
-    cur.execute("""
-        SELECT * FROM USERS
-        """)
-    print(f'{datetime.now()} Подключена база данных users')
+    cur.execute("SELECT * FROM USERS")
     users = cur.fetchall()
     conn.commit()
     cur.close()
@@ -80,32 +78,70 @@ def process_apartment(message):
         bot.send_message(message.chat.id, "❌ Квартира уже зарегистрирована")
         return
 
+    # Сохраняем квартиру во временные данные
+    user_data[user_id] = {'apartment': apartment}
+
+    msg = bot.send_message(message.chat.id, "Введите количество счетчиков холодной воды (от 1 до 3):")
+    bot.register_next_step_handler(msg, check_water_meters)
+
+def check_water_meters(message):
+    try:
+        water_meters = int(message.text.strip())
+        if not 1 <= water_meters <= 3:
+            raise ValueError
+    except:
+        msg = bot.send_message(message.chat.id, "❌ Введите число от 1 до 3")
+        bot.register_next_step_handler(msg, check_water_meters)
+        return
+
+    user_id = message.from_user.id
+    # Получаем сохраненный номер квартиры из user_data
+    apartment = user_data[user_id]['apartment']
+
+    # Обновляем данные в user_data
+    user_data[user_id] = {
+        'water_count': water_meters,
+        'apartment': apartment  # Используем сохраненное значение квартиры
+    }
+
     markup = types.InlineKeyboardMarkup()
     markup.add(
-        types.InlineKeyboardButton("4 счетчика", callback_data=f"meters_4_{apartment}"),
-        types.InlineKeyboardButton("6 счетчиков", callback_data=f"meters_6_{apartment}")
+        types.InlineKeyboardButton('Однотарифный', callback_data=f'elec_1_{water_meters}_{apartment}'),
+        types.InlineKeyboardButton('Двухтарифный', callback_data=f'elec_2_{water_meters}_{apartment}')
     )
-    bot.send_message(message.chat.id, "Выберите количество счетчиков:", reply_markup=markup)
+    bot.send_message(message.chat.id, "Выберите тип счетчика электричества", reply_markup=markup)
 
 
 # Завершение настройки квартиры
-@bot.callback_query_handler(func=lambda call: call.data.startswith('meters_'))
+@bot.callback_query_handler(func=lambda call: call.data.startswith('elec_'))
 def select_meters(call):
-    _, count, apartment = call.data.split('_')
+    parts = call.data.split('_')
+    elec_type = parts[1]  # 1 или 2
+    water_count = parts[2]
     user_id = call.from_user.id
+
+    # Получаем сохраненные данные
+    apartment = user_data[user_id]['apartment']
 
     # Добавляем пользователя в базу данных
     conn = sqlite3.connect('users.sql')
     cur = conn.cursor()
     cur.execute("""
-        INSERT INTO users (telegram_id, apartment, meters_count) VALUES (?, ?, ?)
-    """, (user_id, int(apartment), int(count)))
+        INSERT INTO users (telegram_id, apartment, water_count, electricity_count) 
+        VALUES (?, ?, ?, ?)
+    """, (user_id, int(apartment), int(water_count), int(elec_type)))
     conn.commit()
     cur.close()
     conn.close()
 
+    # Удаляем временные данные
+    del user_data[user_id]
+
     bot.send_message(call.message.chat.id, "✅ Регистрация успешна! Перейдите в профиль: /account")
-    bot.send_message(ADMIN_ID, f"Новый пользователь: кв. {apartment}, счетчиков: {count}")
+    bot.send_message(ADMIN_ID,
+                     f"Новый пользователь: кв. {apartment}, "
+                     f"счетчиков воды: {water_count}, "
+                     f"тип счетчика электричества: {'двухтарифный' if elec_type == '2' else 'однотарифный'}")
     print(f'{datetime.now()} Новый пользователь. Квартира {apartment}')
 
 
@@ -119,7 +155,7 @@ def account(message):
 
     # Ищем пользователя по telegram_id
     cur.execute("""
-        SELECT apartment, meters_count FROM users WHERE telegram_id = ?
+        SELECT apartment, water_count, electricity_count FROM users WHERE telegram_id = ?
     """, (telegram_id,))
 
     result = cur.fetchone()
@@ -127,10 +163,15 @@ def account(message):
     conn.close()
 
     if result:
-        apartment, meters_count = result
+        apartment, water_count, elecricity_count = result
+        rate = ''
+        if elecricity_count == 1: rate = "Однотарифный"
+        if elecricity_count == 2: rate = "Двухтарифный"
         bot.send_message(
             message.chat.id,
-            f"🏠 Ваш профиль:\nКвартира: {apartment}\nСчётчиков: {meters_count}"
+            f"🏠 Ваш профиль:\nКвартира: {apartment}\n"
+            f"Счётчиков воды: {water_count} \n"
+            f"Счетчик электричества: {rate}"
         )
     else:
         bot.send_message(
@@ -148,17 +189,17 @@ def send_data(message):
     else:
         conn = sqlite3.connect('users.sql')
         cur = conn.cursor()
-        cur.execute("SELECT apartment, meters_count FROM users WHERE telegram_id = ?", (telegram_id,))
+        cur.execute("SELECT apartment, water_count, electricity_count FROM users WHERE telegram_id = ?", (telegram_id,))
         user_data = cur.fetchone()
         cur.close()
         conn.close()
 
         if not user_data:
-            bot.send_message(message.chat.id, "Вы не зарегистрированы")
+            bot.send_message(message.chat.id, "Вы не зарегистрированы. Чтобы зарегиситрироваться, нажмите /start")
             return
 
-        apartment, meters_count = user_data
-        user = User(telegram_id, apartment, meters_count)
+        apartment, water_count, electricity_count = user_data
+        user = User(telegram_id, apartment, water_count, electricity_count)
         temp_users[telegram_id] = user
 
     month, year = get_month()
