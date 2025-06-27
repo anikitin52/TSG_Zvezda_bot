@@ -1,3 +1,3 @@
 # created by virtualenv automatically
 config.py
-.sql
+*.sql
