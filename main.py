@@ -3,6 +3,7 @@ from config import *
 from user import *
 from utils import *
 from data import *
+from table_create import *
 from datetime import datetime
 import threading
 import time
@@ -144,12 +145,20 @@ def select_meters(call):
                      f"тип счетчика электричества: {'двухтарифный' if elec_type == '2' else 'однотарифный'}")
     print(f'{datetime.now()} Новый пользователь. Квартира {apartment}')
 
+@bot.message_handler(commands=['export'])
+def export_data(message):
+    if message.chat.id != ACCOUNTANT_ID:
+        bot.send_message(message.chat.id, "У вас нет доступа к этой команде")
+
+    send_exel_file()
+    with open("meter_data.xlsx", "rb") as f:
+        bot.send_document(message.chat.id, f)
+
 
 # Переход в профиль
 @bot.message_handler(commands=['account'])
 def account(message):
     telegram_id = message.from_user.id
-
     conn = sqlite3.connect('users.sql')
     cur = conn.cursor()
 
@@ -168,7 +177,7 @@ def account(message):
 
     # Если пользователь есть - получаем его данные
     cur.execute("""
-        SELECT apartment, water_count, electricity_type FROM users WHERE telegram_id = ?
+        SELECT apartment, water_count, electricity_count FROM users WHERE telegram_id = ?
     """, (telegram_id,))
     result = cur.fetchone()
     cur.close()
@@ -356,8 +365,6 @@ def confirm_all(call):
     temp_users.pop(call.from_user.id, None)
     bot.send_message(call.message.chat.id, "✅ Показания отправлены")
     print(f'{datetime.now()} Показания переданы. Квартира {user.apartment}')
-
-
 
 @bot.callback_query_handler(func=lambda call: call.data == 'back_edit')
 def back_edit(call):
