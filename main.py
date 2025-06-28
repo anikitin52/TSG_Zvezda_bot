@@ -201,6 +201,11 @@ def account(message):
 
 @bot.message_handler(commands=['send'])
 def send_data(message):
+    now = datetime.now()
+    if now.day < day_start_collection or now.day > day_end_collection:
+        bot.send_message(message.chat.id, "❌ Прием показаний закрыт. Показания принимаются с 23 по 27 число каждого месяца")
+        return
+
     telegram_id = message.from_user.id
 
     if telegram_id in temp_users:

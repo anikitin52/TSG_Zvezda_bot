@@ -23,6 +23,8 @@ electricity_meters = {
 
 # TODO: Сделать, чтобы не приходило, если уже отправлено
 notification_time = [26, 12, 00]  # Время напоминания. День, час, минута
+day_start_collection = 23
+day_end_collection = 27
 
 months = {
     1: 'январь', 2: 'февраль', 3: 'март', 4: 'апрель',
