@@ -1,4 +1,4 @@
-from data import cold_water_meters, hot_water_meters, electricity_meters
+from data import cold_water_meters, hot_water_meters, electricity_meters, current_meters
 
 
 class User:
@@ -26,19 +26,31 @@ class User:
 
     def get_report(self):
         report_lines = []
+        user_data = {}  # сюда будем собирать показания
 
         # Холодная вода
         for i in range(self.water_count):
-            report_lines.append(f"{cold_water_meters[self.water_count][i]}: {self.metrics.get(f'c{i + 1}', '—')}")
+            name = cold_water_meters[self.water_count][i]
+            value = self.metrics.get(f'c{i + 1}', '—')
+            report_lines.append(f"{name}: {value}")
+            user_data[name] = value
 
-        # Горячая вода (количество счетчиков такое же как у холодной)
+        # Горячая вода
         for i in range(self.water_count):
-            report_lines.append(
-                f"{hot_water_meters[self.water_count][i]}: {self.metrics.get(f'c{i + 1 + self.water_count}', '—')}")
+            name = hot_water_meters[self.water_count][i]
+            value = self.metrics.get(f'c{i + 1 + self.water_count}', '—')
+            report_lines.append(f"{name}: {value}")
+            user_data[name] = value
 
         # Электричество
         elec_meters = electricity_meters[self.electricity_type]
         for i in range(len(elec_meters)):
-            report_lines.append(f"{elec_meters[i]}: {self.metrics.get(f'c{i + 1 + 2 * self.water_count}', '—')}")
+            name = elec_meters[i]
+            value = self.metrics.get(f'c{i + 1 + 2 * self.water_count}', '—')
+            report_lines.append(f"{name}: {value}")
+            user_data[name] = value
+
+        # Сохраняем данные в словарь
+        current_meters[self.telegram_id] = user_data
 
         return "\n".join(report_lines)
