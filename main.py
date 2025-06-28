@@ -393,13 +393,12 @@ def cancel(call):
 
 
 # Обработка обращения
-@bot.message_handler(commands=['address'])
-def address(message):
+@bot.message_handler(commands=['manager'])
+def address_manager(message):
     msg = bot.send_message(message.chat.id, "✉️ Напишите своё обращение к председателю ТСЖ")
-    bot.register_next_step_handler(msg, send_address)
+    bot.register_next_step_handler(msg, send_address_manager)
 
-
-def send_address(message):
+def send_address_manager(message):
     text = message.text.strip()
     sender_id = message.from_user.id
     sender_name = message.from_user.first_name or ""
@@ -429,6 +428,114 @@ def send_address(message):
     )
     bot.send_message(message.chat.id, "✅ Обращение успешно отправлено председателю")
     print(f'{datetime.now()} Обращение отправлено. Кв. {apartment}, ID {sender_id}')
+
+@bot.message_handler(commands=['accountant'])
+def address_accountant(message):
+    msg = bot.send_message(message.chat.id, "✉️ Напишите своё обращение к бухгалтеру")
+    bot.register_next_step_handler(msg, send_address_accountant)
+
+def send_address_accountant(message):
+    text = message.text.strip()
+    sender_id = message.from_user.id
+    sender_name = message.from_user.first_name or ""
+    sender_surname = message.from_user.last_name or ""
+
+    # Получаем номер квартиры из базы данных
+    conn = sqlite3.connect('users.sql')
+    cur = conn.cursor()
+    cur.execute("SELECT apartment FROM users WHERE telegram_id = ?", (sender_id,))
+    result = cur.fetchone()
+    cur.close()
+    conn.close()
+
+    if result:
+        apartment = result[0]
+    else:
+        apartment = "Неизвестна"
+
+    # Отправка сообщения бухгалтеру
+    bot.send_message(
+        ACCOUNTANT_ID,
+        f'📨 Обращение от жителя:\n'
+        f'👤 {sender_name} {sender_surname}\n'
+        f'🏠 Квартира: {apartment}\n\n'
+        f'_{text}_',
+        parse_mode="Markdown"
+    )
+    bot.send_message(message.chat.id, "✅ Обращение успешно отправлено бухгалтеру")
+    print(f'{datetime.now()} Обращение отправлено. Кв. {apartment}, ID {sender_id}')
+
+@bot.message_handler(commands=['electric'])
+def address_electric(message):
+    msg = bot.send_message(message.chat.id, "✉️ Напишите текст заявки на работу электрика")
+    bot.register_next_step_handler(msg, send_address_electric)
+
+def send_address_electric(message):
+    text = message.text.strip()
+    sender_id = message.from_user.id
+    sender_name = message.from_user.first_name or ""
+    sender_surname = message.from_user.last_name or ""
+
+    # Получаем номер квартиры из базы данных
+    conn = sqlite3.connect('users.sql')
+    cur = conn.cursor()
+    cur.execute("SELECT apartment FROM users WHERE telegram_id = ?", (sender_id,))
+    result = cur.fetchone()
+    cur.close()
+    conn.close()
+
+    if result:
+        apartment = result[0]
+    else:
+        apartment = "Неизвестна"
+
+    bot.send_message(
+        ELECTRIC_ID,
+        f'📨 Новая заявка на работу:\n'
+        f'👤 {sender_name} {sender_surname}\n'
+        f'🏠 Квартира: {apartment}\n\n'
+        f'_{text}_',
+        parse_mode="Markdown"
+    )
+    bot.send_message(message.chat.id, "✅ Заявка на работу электрика успешно отправлена")
+    print(f'{datetime.now()} Обращение отправлено. Кв. {apartment}, ID {sender_id}')
+
+@bot.message_handler(commands=['plumber'])
+def address_plumber(message):
+    msg = bot.send_message(message.chat.id, "✉️ Напишите текст заявки на работу сантехника")
+    bot.register_next_step_handler(msg, send_address_plumber)
+
+def send_address_plumber(message):
+    text = message.text.strip()
+    sender_id = message.from_user.id
+    sender_name = message.from_user.first_name or ""
+    sender_surname = message.from_user.last_name or ""
+
+    # Получаем номер квартиры из базы данных
+    conn = sqlite3.connect('users.sql')
+    cur = conn.cursor()
+    cur.execute("SELECT apartment FROM users WHERE telegram_id = ?", (sender_id,))
+    result = cur.fetchone()
+    cur.close()
+    conn.close()
+
+    if result:
+        apartment = result[0]
+    else:
+        apartment = "Неизвестна"
+
+    bot.send_message(
+        PLUMBER_ID,
+        f'📨 Новая заявка на работу:\n'
+        f'👤 {sender_name} {sender_surname}\n'
+        f'🏠 Квартира: {apartment}\n\n'
+        f'_{text}_',
+        parse_mode="Markdown"
+    )
+    bot.send_message(message.chat.id, "✅ Заявка на работу сантехника успешно отправлена")
+    print(f'{datetime.now()} Обращение отправлено. Кв. {apartment}, ID {sender_id}')
+
+
 
 
 # Авторизация привелегированных пользователей
@@ -461,6 +568,29 @@ def auth(message):
                          f'‼ Пользователь {accountant.first_name} {accountant.last_name} авторизоан как Бухгалтер')
         print(
             f'{datetime.now()} Бухгалтер авторизован. ID = {message.chat.id}: {message.from_user.first_name} {message.from_user.last_name}')
+
+    if message.text == ELECTRIC_CODE:
+        global ELECTRIC_ID
+        ELECTRIC_ID = message.chat.id
+        electric = message.from_user
+        bot.send_message(message.chat.id, "✅ Вы авторизованы как Электрик")
+
+        bot.send_message(ADMIN_ID,
+                         f'‼ Пользователь {electric.first_name} {electric.last_name} авторизоан как Электрик')
+        print(
+            f'{datetime.now()} Электрик авторизован. ID = {message.chat.id}: {message.from_user.first_name} {message.from_user.last_name}')
+
+
+    if message.text == PLUMBER_CODE:
+        global PLUMBER_ID
+        PLUMBER_ID = message.chat.id
+        plumber = message.from_user
+        bot.send_message(message.chat.id, "✅ Вы авторизованы как Сантехник")
+
+        bot.send_message(ADMIN_ID,
+                         f'‼ Пользователь {plumber.first_name} {plumber.last_name} авторизоан как Электрик')
+        print(
+            f'{datetime.now()} Сантехник авторизован. ID = {message.chat.id}: {message.from_user.first_name} {message.from_user.last_name}')
 
 
 
