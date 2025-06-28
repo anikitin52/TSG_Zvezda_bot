@@ -592,8 +592,6 @@ def auth(message):
         print(
             f'{datetime.now()} Сантехник авторизован. ID = {message.chat.id}: {message.from_user.first_name} {message.from_user.last_name}')
 
-
-
 def notifications():
     while True:
         now = datetime.now()
