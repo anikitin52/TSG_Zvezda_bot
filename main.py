@@ -496,12 +496,12 @@ def notifications():
                 time.sleep(60)
 
             # ⏰ Уведомление о завершении сбора показаний
-            if now.day == day_end_collection and now.hour == 17 and now.minute == 22:
+            if now.day == day_end_collection and now.hour == 17 and now.minute == 36:
                 print(f"{now} Уведомление о завершении сбора")
 
                 # Создаём и отправляем Excel-файл
                 create_exel_file()
-                with open("meter_data.xlsx", "rb") as f:
+                with open(f"Показания счетчиков {current_month}.xlsx", "rb") as f:
                     bot.send_document(ACCOUNTANT_ID, f)
 
                 for telegram_id, apartment, water_count, electricity_count in users:
@@ -517,7 +517,7 @@ def notifications():
                         temp_users[telegram_id] = User(telegram_id, apartment, water_count, electricity_count)
 
                     try:
-                        bot.send_message(telegram_id, "📢 Время передать показания! /send")
+                        bot.send_message(telegram_id, "Прием показаний закрыт /send")
                         print(f"{now} Напоминание отправлено {telegram_id}")
                     except Exception as e:
                         print(f"{now} Ошибка отправки {telegram_id}: {e}")
