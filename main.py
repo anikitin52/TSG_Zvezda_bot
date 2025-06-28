@@ -150,7 +150,7 @@ def export_data(message):
     if message.chat.id != ACCOUNTANT_ID:
         bot.send_message(message.chat.id, "У вас нет доступа к этой команде")
 
-    send_exel_file()
+    create_exel_file()
     with open("meter_data.xlsx", "rb") as f:
         bot.send_document(message.chat.id, f)
 
@@ -464,31 +464,91 @@ def auth(message):
 
 
 
-# Ежемесячное напоминание
-def send_monthly_notifications():
+def notifications():
     while True:
         now = datetime.now()
-        if now.day == notification_time[0] and now.hour == notification_time[1] and now.minute == notification_time[2]:
-            conn = sqlite3.connect('users.sql')
-            cur = conn.cursor()
-            cur.execute("SELECT telegram_id, apartment, meters_count FROM users")
-            rows = cur.fetchall()
-            cur.close()
-            conn.close()
-            # TODO: Если пользователь уже отправлял в этом месяце, то не отправлять
-            for row in rows:
-                telegram_id, apartment, meters_count = row
-                # Кэшируем пользователя, если ещё нет
-                if telegram_id not in temp_users:
-                    temp_users[telegram_id] = User(telegram_id, apartment, meters_count)
+        current_month = f"{now.month}.{now.year}"
 
-                try:
-                    bot.send_message(telegram_id, "📢 Время передать показания! /send")
-                    print(f'{now} Напоминание отправлено пользователю {telegram_id}')
-                except Exception as e:
-                    print(f"{now} Ошибка отправки {telegram_id}: {e}")
+        # Получаем всех пользователей из базы users.sql
+        try:
+            conn_users = sqlite3.connect('users.sql')
+            cur_users = conn_users.cursor()
+            cur_users.execute("SELECT telegram_id, apartment, water_count, electricity_count FROM users")
+            users = cur_users.fetchall()
+        finally:
+            cur_users.close()
+            conn_users.close()
 
-            time.sleep(3600)  # Пауза 1 час, чтобы не слать много раз в минуту
+        try:
+            # Подключение к базе с показаниями
+            conn_data = sqlite3.connect('meter_data.sql')
+            cur_data = conn_data.cursor()
+
+            # ⏰ Уведомление о начале сбора показаний
+            if now.day == day_start_collection and now.hour == 8 and now.minute == 00:
+                print(f"{now} Уведомление о начале сбора показаний")
+                for telegram_id, _, _, _ in users:
+                    try:
+                        bot.send_message(telegram_id, "📬 Открыт сбор показаний счетчиков")
+                        print(f"{now} Уведомление отправлено {telegram_id}")
+                    except Exception as e:
+                        print(f"{now} Ошибка отправки {telegram_id}: {e}")
+                time.sleep(60)
+
+            # ⏰ Уведомление о завершении сбора показаний
+            if now.day == day_end_collection and now.hour == 17 and now.minute == 22:
+                print(f"{now} Уведомление о завершении сбора")
+
+                # Создаём и отправляем Excel-файл
+                create_exel_file()
+                with open("meter_data.xlsx", "rb") as f:
+                    bot.send_document(ACCOUNTANT_ID, f)
+
+                for telegram_id, apartment, water_count, electricity_count in users:
+                    cur_data.execute(
+                        "SELECT 1 FROM meters_data WHERE telegram_id = ? AND month = ?",
+                        (telegram_id, current_month)
+                    )
+                    if cur_data.fetchone():
+                        print(f"{now} Уже передавал: {telegram_id}")
+                        continue
+
+                    if telegram_id not in temp_users:
+                        temp_users[telegram_id] = User(telegram_id, apartment, water_count, electricity_count)
+
+                    try:
+                        bot.send_message(telegram_id, "📢 Время передать показания! /send")
+                        print(f"{now} Напоминание отправлено {telegram_id}")
+                    except Exception as e:
+                        print(f"{now} Ошибка отправки {telegram_id}: {e}")
+
+            # ⏰ Ежемесячное напоминание
+            if now.day == notification_time[0] and now.hour == notification_time[1] and now.minute == notification_time[2]:
+                print(f"{now} Ежемесячное напоминание о передаче показаний")
+                for telegram_id, apartment, water_count, electricity_count in users:
+                    cur_data.execute(
+                        "SELECT 1 FROM meters_data WHERE telegram_id = ? AND month = ?",
+                        (telegram_id, current_month)
+                    )
+                    if cur_data.fetchone():
+                        print(f"{now} Уже передавал: {telegram_id}")
+                        continue
+
+                    if telegram_id not in temp_users:
+                        temp_users[telegram_id] = User(telegram_id, apartment, water_count, electricity_count)
+
+                    try:
+                        bot.send_message(telegram_id, "📢 Время передать показания! /send")
+                        print(f"{now} Напоминание отправлено {telegram_id}")
+                    except Exception as e:
+                        print(f"{now} Ошибка отправки {telegram_id}: {e}")
+
+                time.sleep(3600)
+
+        finally:
+            cur_data.close()
+            conn_data.close()
+
         time.sleep(60)
 
 
@@ -496,5 +556,5 @@ def send_monthly_notifications():
 if __name__ == '__main__':
     now = datetime.now()
     print(f"{now} Бот запущен")
-    threading.Thread(target=send_monthly_notifications, daemon=True).start()
+    threading.Thread(target=notifications, daemon=True).start()
     bot.polling(none_stop=True)
