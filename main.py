@@ -395,7 +395,7 @@ def send_address(message, recipient_info):
     bot.send_message(
         recipient_info['id'],
         f'📨 {recipient_info["message_type"]}:\n'
-        f'👤 {sender_name} {sender_surname}\n'
+        f'👤 [{sender_name} {sender_surname}](tg://user?id={sender_id})\n'
         f'🏠 Квартира: {apartment}\n\n'
         f'_{text}_',
         parse_mode="Markdown"
