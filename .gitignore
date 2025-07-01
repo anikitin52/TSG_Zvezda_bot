@@ -1,0 +1,51 @@
+### Python ###
+# Логи и кэш
+*.log
+*.pyc
+__pycache__/
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+
+# Файлы зависимостей
+venv/
+.env/
+.venv/
+env/
+pip-selfcheck.json
+Pipfile*
+poetry.lock
+requirements.txt
+
+### Данные ###
+# Базы данных и Excel-файлы
+*.sql
+*.sqlite
+*.sqlite3
+*.xlsx
+*.csv
+
+# Конфигурационные файлы (особенно с секретами)
+config.py
+*.env
+.env.local
+secrets.ini
+credentials.json
+
+### Системные файлы ###
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+~$*
+
+### IDE ###
+.idea/
+.vscode/
+*.code-workspace
+
+### Git ###
+# Исключаем сам .gitignore (если нужно редактировать)
+!.gitignore
