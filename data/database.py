@@ -1,4 +1,5 @@
 import sqlite3
+from datetime import datetime
 
 db = 'tsg_database.sql'
 
@@ -38,7 +39,6 @@ def insert_to_database(tablename, columns, values):
     conn.close()
 
 
-
 def find_user_by_id(table_name, user_id, parameter):
     conn = sqlite3.connect(db)
     cur = conn.cursor()
@@ -58,3 +58,13 @@ def select_all(tablename):
     cur.close()
     conn.close()
     return result
+
+
+def clear_table(tablename):
+    conn = sqlite3.connect(db)
+    cur = conn.cursor()
+    cur.execute(f"DELETE FROM {tablename}")
+    conn.commit()
+    cur.close()
+    conn.close()
+    print(f'{datetime.now()} Таблица {tablename} очищена')

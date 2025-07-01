@@ -21,9 +21,9 @@ electricity_meters = {
     2: ["Электричество-День", "Электричество-Ночь"]
 }
 
-notification_time = [28, 17 , 22]  # Время напоминания. День, час, минута
-start_collection = [1, 00, 00]
-end_collection = [27, 23, 59]
+start_collection = [1, 19, 42]
+notification_time = [1, 19, 43]  # Время напоминания. День, час, минута
+end_collection = [1, 19, 44]
 
 months = {
     1: 'январь', 2: 'февраль', 3: 'март', 4: 'апрель',

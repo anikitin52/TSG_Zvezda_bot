@@ -10,9 +10,9 @@ from data.data import *
 from services.exel_export import send_table
 from data.database import *
 
-
 bot = TeleBot(BOT_TOKEN)
 now = datetime.now()
+
 
 @bot.message_handler(commands=['start'])  # Запуск бота
 def start(message):
@@ -47,7 +47,6 @@ def export_data(message):
     else:
         print(f'{now} Пользоватлель {message.chat.id} экспортировал Exel-таблицу')
         send_table(message.chat.id)
-
 
 
 @bot.callback_query_handler(func=lambda call: call.data == 'register')
@@ -132,7 +131,6 @@ def select_meters(call):
     print(f'{datetime.now()} Новый пользователь. Квартира {apartment}')
 
 
-
 # Переход в профиль
 @bot.message_handler(commands=['account'])
 def account(message):
@@ -174,6 +172,11 @@ def send_data(message):
 
     telegram_id = message.from_user.id
 
+    user = find_user_by_id('meters_data', telegram_id, '*')
+    if user:
+        bot.send_message(message.chat.id, '✅ Вы уже передали показания в этом месяце')
+        return
+
     if telegram_id in temp_users:
         user = temp_users[telegram_id]
     else:
@@ -191,7 +194,6 @@ def send_data(message):
     month, year = get_month()
     markup = create_meters_markup(user)
     bot.send_message(message.chat.id, f"📊 Показания за {month} {year}", reply_markup=markup)
-
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('meter_'))
@@ -408,7 +410,6 @@ def send_address(message, recipient_info):
     print(f'{datetime.now()} {recipient_info["message_type"]} отправлено. Кв. {apartment}, ID {sender_id}')
 
 
-
 # Авторизация привелегированных пользователей
 @bot.message_handler()
 def auth(message):
@@ -468,79 +469,46 @@ def notifications():
         now = datetime.now()
         current_month = f"{now.month}.{now.year}"
 
-        # Получаем всех пользователей из базы данных
-        try:
-            users = select_all("users")  # Используем функцию select_all из database.py
-        except Exception as e:
-            print('БД еще не создана')
-
-        # ⏰ Уведомление о начале сбора показаний
-        if now.day == start_collection[0] and now.hour == 8 and now.minute == 00:
-            print(f"{now} Уведомление о начале сбора показаний")
+        # Начало сбора показаний
+        if now.day == start_collection[0] and now.hour == start_collection[1] and now.minute == start_collection[2]:
+            users = select_all('users')
+            print(f'{now} Примем показаний счетчиков открыт')
             for user in users:
-                telegram_id = user[0]  # Предполагаем, что telegram_id - первый столбец
-                try:
-                    bot.send_message(telegram_id, "📬 Открыт сбор показаний счетчиков")
-                    print(f"{now} Уведомление отправлено {telegram_id}")
-                except Exception as e:
-                    print(f"{now} Ошибка отправки {telegram_id}: {e}")
-            time.sleep(60)
+                bot.send_message(user[1], "📬 Открыт сбор показаний счетчиков")
 
-        # ⏰ Уведомление о завершении сбора показаний
-        if now.day == end_collection[0] and now.hour == end_collection[1] and now.minute == end_collection[2]:
-            print(f"{now} Уведомление о завершении сбора")
-
-            send_table(ACCOUNTANT_ID)
-
-
-            for user in users:
-                telegram_id, apartment, water_count, electricity_count = user[0], user[1], user[2], user[3]
-
-                # Проверяем, передавал ли пользователь показания
-                result = find_user_by_id("meters_data", telegram_id,
-                                         "1")  # Используем функцию find_user_by_id из database.py
-                if result:
-                    print(f"{now} Уже передавал: {telegram_id}")
-                    continue
-
-                if telegram_id not in temp_users:
-                    temp_users[telegram_id] = User(telegram_id, apartment, water_count, electricity_count)
-
-                try:
-                    bot.send_message(telegram_id, "Прием показаний закрыт /send")
-                    print(f"{now} Напоминание отправлено {telegram_id}")
-                except Exception as e:
-                    print(f"{now} Ошибка отправки {telegram_id}: {e}")
-
-        # ⏰ Ежемесячное напоминание
+        # Напоминание о передаче
         if now.day == notification_time[0] and now.hour == notification_time[1] and now.minute == notification_time[2]:
-            print(f"{now} Ежемесячное напоминание о передаче показаний")
+            users = select_all('users')
+            sended_data = select_all('meters_data')
+            apartments = []
+            for data in sended_data:
+                apartments.append(data[2])
             for user in users:
-                telegram_id, apartment, water_count, electricity_count = user[0], user[1], user[2], user[3]
+                users_apartment = user[2]
+                user_id = user[1]
+                if users_apartment not in apartments:
+                    bot.send_message(user_id, "⏰ Пора передать показания счетчиков! /send")
 
-                # Проверяем, передавал ли пользователь показания
-                result = find_user_by_id("meters_data", telegram_id,
-                                         "1")  # Используем функцию find_user_by_id из database.py
-                if result:
-                    print(f"{now} Уже передавал: {telegram_id}")
-                    continue
 
-                if telegram_id not in temp_users:
-                    temp_users[telegram_id] = User(telegram_id, apartment, water_count, electricity_count)
-
-                try:
-                    bot.send_message(telegram_id, "📢 Время передать показания! /send")
-                    print(f"{now} Напоминание отправлено {telegram_id}")
-                except Exception as e:
-                    print(f"{now} Ошибка отправки {telegram_id}: {e}")
-
-            time.sleep(3600)
+        # Завершение сбора
+        if now.day == end_collection[0] and now.hour == end_collection[1] and now.minute == end_collection[2]:
+            users = select_all('users')
+            sended_data = select_all('meters_data')
+            apartments = []
+            for data in sended_data:
+                apartments.append(data[2])
+            for user in users:
+                users_apartment = user[2]
+                user_id = user[1]
+                if users_apartment not in apartments:
+                    bot.send_message(user_id, "🔴 Прием показаний закрыт до следующего месяца")
+            send_table(ACCOUNTANT_ID)
+            clear_table('meters_data')
 
         time.sleep(60)
 
 # Запуск
 if __name__ == '__main__':
-
     now = datetime.now()
     print(f"{now} Бот запущен")
     threading.Thread(target=notifications, daemon=True).start()
