@@ -284,6 +284,7 @@ def confirm_all(call):
 
     # Создаем таблицу (если не существует)
     columns = [
+        "ID PRIMARY KEY AUTOINCREMENT"
         "telegram_id INTEGER",
         "apartment INTEGER",
         "month VARCHAR",
@@ -350,6 +351,16 @@ def cancel(call):
 
 @bot.message_handler(commands=['manager', 'accountant', 'electric', 'plumber'])
 def handle_address_request(message):
+    # Создание таблицы обращениями
+    create_table('appeals', [
+        'user_id INTEGER',
+        'apartment INTEGER',
+        'message_text TEXT',
+        'recipient_type TEXT',
+        "status TEXT DEFAULT 'open'",
+        'timestamp DATETIME DEFAULT CURRENT_TIMESTAMP'
+    ])
+
     # Определяем тип получателя и текст запроса
     command = message.text.split('@')[0]
     recipient_data = {
@@ -378,6 +389,7 @@ def handle_address_request(message):
             'response_success': "✅ Заявка на работу сантехника успешно отправлена"
         }
     }
+
 
     msg = bot.send_message(message.chat.id, recipient_data[command]['request_text'])
     bot.register_next_step_handler(msg, lambda m: send_address(m, recipient_data[command]))
