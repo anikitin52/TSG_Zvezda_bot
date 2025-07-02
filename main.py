@@ -379,24 +379,23 @@ def handle_address_request(message):
         '/electric': {
             'id': ELECTRIC_ID,
             'request_text': "✉️ Напишите текст заявки на работу электрика",
-            'message_type': 'Новая заявка на работу слектрика',
+            'message_type': 'Заявка на работу слектрика',
             'response_success': "✅ Заявка на работу электрика успешно отправлена"
         },
         '/plumber': {
             'id': PLUMBER_ID,
             'request_text': "✉️ Напишите текст заявки на работу сантехника",
-            'message_type': 'Новая заявка на работу сантехника',
+            'message_type': 'Заявка на работу сантехника',
             'response_success': "✅ Заявка на работу сантехника успешно отправлена"
         }
     }
-
 
     msg = bot.send_message(message.chat.id, recipient_data[command]['request_text'])
     bot.register_next_step_handler(msg, lambda m: send_address(m, recipient_data[command]))
 
 
 def send_address(message, recipient_info):
-    text = message.text.strip()
+    text = message.text.strip() if message.text else ""
     sender_id = message.from_user.id
     sender_name = message.from_user.first_name or ""
     sender_surname = message.from_user.last_name or ""
@@ -404,6 +403,12 @@ def send_address(message, recipient_info):
     # Получаем номер квартиры из базы данных
     result = find_user_by_id("users", sender_id, "apartment")
     apartment = result[0] if result else "Неизвестна"
+
+    # Сохраняем обращение в базу данных
+    insert_to_database('appeals',
+                       ['user_id', 'apartment', 'message_text', 'recipient_type'],
+                       [sender_id, apartment, message.text, recipient_info['message_type']]
+                       )
 
     # Формируем и отправляем сообщение
     bot.send_message(
@@ -501,7 +506,6 @@ def notifications():
                 if users_apartment not in apartments:
                     bot.send_message(user_id, "⏰ Пора передать показания счетчиков! /send")
 
-
         # Завершение сбора
         if now.day == end_collection[0] and now.hour == end_collection[1] and now.minute == end_collection[2]:
             users = select_all('users')
@@ -518,6 +522,7 @@ def notifications():
             clear_table('meters_data')
 
         time.sleep(60)
+
 
 # Запуск
 if __name__ == '__main__':
