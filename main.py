@@ -459,9 +459,19 @@ def process_staff_reply(message):
         return
 
     user_id, original_message_id = active_dialogs[staff_id]
+    if staff_id == MANAGER_ID:
+        staff_position = "председателя ТСЖ"
+    elif staff_id == ACCOUNTANT_ID:
+        staff_position = "бухгалтера"
+    elif staff_id == ELECTRIC_ID:
+        staff_position = "электрика"
+    elif staff_id == PLUMBER_ID:
+        staff_position = "сантехника"
+    else:
+        staff_position = "администрации"
 
     # Отправляем ответ пользователю
-    bot.send_message(user_id, f"📩 Ответ на ваше обращение:\n\n{message.text}")
+    bot.send_message(user_id, f"📩 Ответ {staff_position} на ваше обращение:\n\n{message.text}")
 
     # Обновляем статус в БД
     update_values('appeals',
