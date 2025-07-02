@@ -224,10 +224,7 @@ def process_value(message):
 
     user.add_metric(meter, value)
 
-    try:
-        bot.delete_message(message.chat.id, message.message_id - 1)
-    except:
-        pass
+
 
     month, year = get_month()
     markup = create_meters_markup(user)
@@ -261,10 +258,6 @@ def confirm_all(call):
         bot.send_message(call.message.chat.id, "Ошибка: пользователь не найден")
         return
 
-    try:
-        bot.delete_message(call.message.chat.id, call.message.message_id)
-    except:
-        pass
 
     report = user.get_report()
 
@@ -356,10 +349,6 @@ def cancel(call):
         user.clear_metrics()
         temp_users.pop(call.from_user.id, None)
 
-    try:
-        bot.delete_message(call.message.chat.id, call.message.message_id)
-    except:
-        pass
 
     bot.send_message(call.message.chat.id, "🚫 Ввод отменён")
 
