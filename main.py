@@ -357,6 +357,7 @@ def handle_address_request(message):
         'apartment INTEGER',
         'message_text TEXT',
         'recipient_type TEXT',
+        'message_id INTEGER',
         "status TEXT DEFAULT 'open'",
         'timestamp DATETIME DEFAULT CURRENT_TIMESTAMP'
     ])
@@ -406,8 +407,8 @@ def send_address(message, recipient_info):
 
     # Сохраняем обращение в базу данных
     insert_to_database('appeals',
-                       ['user_id', 'apartment', 'message_text', 'recipient_type'],
-                       [sender_id, apartment, message.text, recipient_info['message_type']]
+                       ['user_id', 'apartment', 'message_text', 'recipient_type', 'message_id'],
+                       [sender_id, apartment, text, recipient_info['message_type'], message.message_id]
                        )
 
     # Кнопка отправки сообщения
@@ -433,6 +434,39 @@ def send_address(message, recipient_info):
 
     # Логируем действие
     print(f'{datetime.now()} {recipient_info["message_type"]} отправлено. Кв. {apartment}, ID {sender_id}')
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('reply_'))
+def start_staff_reply(call):
+    _, user_id, message_id = call.data.split('_')
+    active_dialogs[call.from_user.id] = (int(user_id), int(message_id))
+
+    bot.send_message(
+        call.from_user.id,
+        "✍️ Введите ваш ответ:",
+        reply_markup=types.ForceReply(selective=True)
+    )
+
+
+@bot.message_handler(func=lambda m: m.reply_to_message and m.reply_to_message.text == "✍️ Введите ваш ответ:")
+def process_staff_reply(message):
+    staff_id = message.from_user.id
+    if staff_id not in active_dialogs:
+        return
+
+    user_id, original_message_id = active_dialogs[staff_id]
+
+    # Отправляем ответ пользователю
+    bot.send_message(user_id, f"📩 Ответ на ваше обращение:\n\n{message.text}")
+
+    # Обновляем статус в БД
+    update_values('appeals',
+                       {'status': 'closed'},
+                       {'user_id': user_id, 'message_id': original_message_id}
+                       )
+
+    bot.send_message(staff_id, "✅ Ответ отправлен")
+    del active_dialogs[staff_id]
 
 
 # Авторизация привелегированных пользователей

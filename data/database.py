@@ -68,3 +68,19 @@ def clear_table(tablename):
     cur.close()
     conn.close()
     print(f'{datetime.now()} Таблица {tablename} очищена')
+
+
+def update_values(table_name, set_values, where_conditions):
+    conn = sqlite3.connect(db)
+    cur = conn.cursor()
+
+    set_clause = ", ".join([f"{k} = ?" for k in set_values.keys()])
+    where_clause = " AND ".join([f"{k} = ?" for k in where_conditions.keys()])
+
+    cur.execute(
+        f"UPDATE {table_name} SET {set_clause} WHERE {where_clause}",
+        list(set_values.values()) + list(where_conditions.values())
+    )
+
+    conn.commit()
+    conn.close()
