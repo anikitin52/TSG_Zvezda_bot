@@ -59,6 +59,13 @@ def select_all(tablename):
     conn.close()
     return result
 
+def select_all_where(table_name, where_condition):
+    conn = sqlite3.connect(db)
+    cur = conn.cursor()
+    cur.execute(f"SELECT * FROM {table_name} WHERE {where_condition}")
+    result = cur.fetchall()
+    conn.close()
+    return result
 
 def clear_table(tablename):
     conn = sqlite3.connect(db)
