@@ -294,7 +294,6 @@ def confirm_all(call):
 
     # Создаем таблицу (если не существует)
     columns = [
-        "ID PRIMARY KEY AUTOINCREMENT"
         "telegram_id INTEGER",
         "apartment INTEGER",
         "month VARCHAR",
