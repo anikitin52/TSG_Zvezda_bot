@@ -410,6 +410,13 @@ def send_address(message, recipient_info):
                        [sender_id, apartment, message.text, recipient_info['message_type']]
                        )
 
+    # Кнопка отправки сообщения
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton(
+        "Ответить",
+        callback_data=f"reply_{sender_id}_{message.message_id}"
+    ))
+
     # Формируем и отправляем сообщение
     bot.send_message(
         recipient_info['id'],
@@ -417,7 +424,8 @@ def send_address(message, recipient_info):
         f'👤 [{sender_name} {sender_surname}](tg://user?id={sender_id})\n'
         f'🏠 Квартира: {apartment}\n\n'
         f'_{text}_',
-        parse_mode="Markdown"
+        parse_mode="Markdown",
+        reply_markup=markup
     )
 
     # Отправляем подтверждение пользователю
