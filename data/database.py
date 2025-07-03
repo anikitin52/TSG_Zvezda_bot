@@ -39,7 +39,7 @@ def insert_to_database(tablename, columns, values):
     conn.close()
 
 
-def find_user_by_id(table_name, user_id, parameter):
+def find_user_by_id(table_name, user_id, parameter='*'):
     conn = sqlite3.connect(db)
     cur = conn.cursor()
     cur.execute(f"SELECT {parameter} FROM {table_name} WHERE telegram_id = ?", (user_id,))
@@ -67,14 +67,20 @@ def select_all_where(table_name, where_condition):
     conn.close()
     return result
 
+
 def clear_table(tablename):
     conn = sqlite3.connect(db)
     cur = conn.cursor()
+
+    # Очищаем таблицу и сбрасываем автоинкремент
     cur.execute(f"DELETE FROM {tablename}")
+    cur.execute(f"DELETE FROM sqlite_sequence WHERE name='{tablename}'")
+
     conn.commit()
     cur.close()
     conn.close()
-    print(f'{datetime.now()} Таблица {tablename} очищена')
+    print(f'{datetime.now()} Таблица {tablename} очищена, автоинкремент сброшен')
+
 
 
 def update_values(table_name, set_values, where_conditions):

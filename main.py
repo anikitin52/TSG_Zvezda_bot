@@ -19,67 +19,54 @@ def start(message):
     tablename = 'users'
     user_id = message.from_user.id
 
-    create_table(tablename, [
-        "telegram_id INTEGER UNIQUE",
-        "apartment INTEGER",
-        "water_count INTEGER",
-        "electricity_count INTEGER"
-    ])
-
-    user = find_user_by_id(tablename, user_id, '*')
-
+    # Проверяем наличие пользователя
+    user = find_user_by_id(tablename, user_id)
     if user:
-        apartment = user[2]  # TODO: Проверить
+        apartment = user[2]
         bot.send_message(message.chat.id, f"✅ Вы уже зарегистрированы! Квартира: {apartment}")
-
     else:
+        # Пользователь не найден. Начинаем регистрацию
         markup = types.InlineKeyboardMarkup()
         markup.add(types.InlineKeyboardButton("Зарегистрироваться", callback_data='register'))
         print(f"{now} Пользователь {user_id} запустил бота")
         bot.send_message(message.chat.id, "👋 Добро пожаловать! Для начала зарегистрируйтесь:", reply_markup=markup)
 
 
-@bot.message_handler(commands=['export'])
-def export_data(message):
-    if message.chat.id != ACCOUNTANT_ID:
-        bot.send_message(message.chat.id, "У вас нет доступа к этой команде")
-        return
-    else:
-        print(f'{now} Пользоватлель {message.chat.id} экспортировал Exel-таблицу')
-        send_table(message.chat.id)
-
-
 @bot.callback_query_handler(func=lambda call: call.data == 'register')
-def register(call):
+def add_apartment_number(call):
+    # Ввод номера квартиры
     msg = bot.send_message(call.message.chat.id, "Введите номер вашей квартиры (1–150):")
-    bot.register_next_step_handler(msg, process_apartment)
+    bot.register_next_step_handler(msg, register_apartment)
 
 
-def process_apartment(message):
-    tablename = 'users'
+def register_apartment(message):
+    # Проверка корректности номера квартиры
     try:
         apartment = int(message.text.strip())
         if not 1 <= apartment <= 150:
             raise ValueError
     except:
         msg = bot.send_message(message.chat.id, "❌ Введите число от 1 до 150")
-        bot.register_next_step_handler(msg, process_apartment)
+        bot.register_next_step_handler(msg, add_apartment_number)
         return
 
+    # Проверка наличия квартиры в БД
+    tablename = 'users'
     users = select_all(tablename)
-
     user_id = message.from_user.id
     if any(u[2] == apartment for u in users):
         bot.send_message(message.chat.id, "❌ Квартира уже зарегистрирована")
         return
 
+    # Ввод количества счетчиков воды
     user_data[user_id] = {'apartment': apartment}
     msg = bot.send_message(message.chat.id, "Введите количество счетчиков холодной воды (от 1 до 3):")
     bot.register_next_step_handler(msg, check_water_meters)
 
 
 def check_water_meters(message):
-    try:  # TODO: Вынести в отдельную функцию
+    # Проверка корректности ввода счетчиков
+    try:
         water_meters = int(message.text.strip())
         if not 1 <= water_meters <= 3:
             raise ValueError
@@ -88,16 +75,15 @@ def check_water_meters(message):
         bot.register_next_step_handler(msg, check_water_meters)
         return
 
+    # Сохраняем данные о квартире
     user_id = message.from_user.id
-    # Получаем сохраненный номер квартиры из user_data
     apartment = user_data[user_id]['apartment']
-
-    # Обновляем данные в user_data
     user_data[user_id] = {
         'water_count': water_meters,
-        'apartment': apartment  # Используем сохраненное значение квартиры
+        'apartment': apartment
     }
 
+    # Кнопки выбора счетчика электричества
     markup = types.InlineKeyboardMarkup()
     markup.add(
         types.InlineKeyboardButton('Однотарифный', callback_data=f'elec_1_{water_meters}_{apartment}'),
@@ -117,26 +103,35 @@ def select_meters(call):
     # Получаем сохраненные данные
     apartment = user_data[user_id]['apartment']
 
+    # Вставляем запись о квартире в БД
     insert_to_database(tablename,
                        ['telegram_id', 'apartment', 'water_count', 'electricity_count'],
                        [user_id, int(apartment), int(water_count), int(elec_type)])
 
-    print('OK')
     del user_data[user_id]
+    print(f'{now} Новый пользователь: {user_id}. Квартира {apartment}')
     bot.send_message(call.message.chat.id, "✅ Регистрация успешна! Перейдите в профиль: /account")
     bot.send_message(ADMIN_ID,
-                     f"Новый пользователь: кв. {apartment}, "
-                     f"счетчиков воды: {water_count}, "
+                     f"Новый пользователь: кв. {apartment}, \n"
+                     f"счетчиков воды: {water_count}, \n"
                      f"тип счетчика электричества: {'двухтарифный' if elec_type == '2' else 'однотарифный'}")
-    print(f'{datetime.now()} Новый пользователь. Квартира {apartment}')
 
 
-# Переход в профиль
+@bot.message_handler(commands=['export'])
+def export_data(message):
+    if message.chat.id != ACCOUNTANT_ID:
+        bot.send_message(message.chat.id, "У вас нет доступа к этой команде")
+        return
+    else:
+        print(f'{now} Пользоватлель {message.chat.id} экспортировал Exel-таблицу')
+        send_table(message.chat.id)
+
+
 @bot.message_handler(commands=['account'])
 def account(message):
+    # Проверка наличия пользователя
     telegram_id = message.from_user.id
-    user_exists = find_user_by_id('users', telegram_id, 'COUNT(*)')[0] > 0  # TODO: Проверить
-
+    user_exists = find_user_by_id('users', telegram_id, 'COUNT(*)')[0] > 0
     if not user_exists:
         bot.send_message(
             message.chat.id,
@@ -144,8 +139,8 @@ def account(message):
         )
         return
 
+    # Вывод информации о пользователе
     result = find_user_by_id('users', telegram_id, 'apartment, water_count, electricity_count')
-
     if result:
         apartment, water_count, electricity_type = result
         rate = "Однотарифный" if electricity_type == "one_rate" else "Двухтарифный"
@@ -162,35 +157,67 @@ def account(message):
         )
 
 
+@bot.message_handler(commands=['auth'])
+def auth(message):
+    msg = bot.send_message(message.chat.id, 'Введите код авторизации')
+    bot.register_next_step_handler(msg, enter_auth_code)
+
+
+def enter_auth_code(message):
+    user_id = message.from_user.id
+    user_name = f'{message.from_user.first_name or ""} {message.from_user.last_name or ""}'
+    auth_code = message.text.strip()
+
+    # Получение кода авторизации из БД
+    staff_list = select_all('staff')
+    for post in staff_list:
+        staff_post = post[1]
+        code = post[4]
+        if auth_code == code:
+            update_values('staff',
+                          {'telegram_id': user_id, 'name': user_name},
+                          {'auth_code': auth_code}
+                          )
+            bot.send_message(message.chat.id, f'Вы успешно авторизованы как {staff_post}')
+            return
+        else:
+            continue
+    else:
+        msg = bot.send_message(message.chat.id, "Неверный код авторизации")
+        bot.register_next_step_handler(msg, enter_auth_code)
+
+
 @bot.message_handler(commands=['send'])
 def send_data(message):
-    now = datetime.now()
+    # Проверка времени отправки
     if now.day < start_collection[0] or now.day > end_collection[0]:
         bot.send_message(message.chat.id,
                          "❌ Прием показаний закрыт. Показания принимаются с 23 по 27 число каждого месяца")
         return
 
+    # Проверка того, что пользователь еще не отправлял показания в этом месяце
     telegram_id = message.from_user.id
-
-    user = find_user_by_id('meters_data', telegram_id, '*')
+    user = find_user_by_id('meters_data', telegram_id)
     if user:
         bot.send_message(message.chat.id, '✅ Вы уже передали показания в этом месяце')
         return
 
+    # Проверка зарегистрирован ли пользователь
     if telegram_id in temp_users:
         user = temp_users[telegram_id]
     else:
-
+        # Пользователь не зарегистрирован
         user_data = find_user_by_id('users', telegram_id, 'apartment, water_count, electricity_count')
-
         if not user_data:
             bot.send_message(message.chat.id, "❌ Вы не зарегистрированы. Для начала нажмите /start")
             return
 
+        # Пользователь зарегистрирован. Принимаем данные
         apartment, water_count, electricity_count = user_data
         user = User(telegram_id, apartment, water_count, electricity_count)
         temp_users[telegram_id] = user
 
+    # Кнопки для вывбора счетчика
     month, year = get_month()
     markup = create_meters_markup(user)
     bot.send_message(message.chat.id, f"📊 Показания за {month} {year}", reply_markup=markup)
@@ -198,6 +225,7 @@ def send_data(message):
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('meter_'))
 def meter_input(call):
+    # Ввод показаний для выбранного счетчика
     meter = call.data.split('_')[1]
     current_editing[call.from_user.id] = meter
     msg = bot.send_message(call.message.chat.id, f"Введите показания для выбранного счетчика:")
@@ -209,10 +237,12 @@ def process_value(message):
     user = temp_users.get(telegram_id)
     meter = current_editing.get(telegram_id)
 
+    # Проверка на наличие ошибки
     if not user or not meter:
         bot.send_message(message.chat.id, "Ошибка: пользователь или счётчик не найдены")
         return
 
+    # Проверка корректности ввода
     try:
         value = int(message.text.strip())
         if value < 0:
@@ -222,22 +252,23 @@ def process_value(message):
         bot.register_next_step_handler(msg, process_value)
         return
 
+    # Ввод данных
     user.add_metric(meter, value)
-
-
-
+    # Создание нового сообщения с кнопками
     month, year = get_month()
     markup = create_meters_markup(user)
-    bot.send_message(message.chat.id, f"📊 Показания за {month} {year}",
-                     reply_markup=markup)
+    bot.send_message(message.chat.id, f"📊 Показания за {month} {year}", reply_markup=markup)
 
 
 @bot.callback_query_handler(func=lambda call: call.data == 'review')
 def review(call):
+    # Проверка наличия пользователя
     user = temp_users.get(call.from_user.id)
     if not user:
         bot.send_message(call.message.chat.id, "Ошибка: пользователь не найден")
         return
+
+    # Создание сообщения с проверкой
     markup = create_review_markup(user)
     month, year = get_month()
     bot.send_message(call.message.chat.id, f"📝 Проверка за {month} {year}", reply_markup=markup)
@@ -245,6 +276,7 @@ def review(call):
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('edit_'))
 def edit_value(call):
+    # Корректировка значений
     meter = call.data.split('_')[1]
     current_editing[call.from_user.id] = meter
     msg = bot.send_message(call.message.chat.id, f"Введите новое значение для выбранного счетчика")
@@ -253,15 +285,16 @@ def edit_value(call):
 
 @bot.callback_query_handler(func=lambda call: call.data == 'confirm_all')
 def confirm_all(call):
+    # Проверка существования пользователя
     user = temp_users.get(call.from_user.id)
     if not user:
         bot.send_message(call.message.chat.id, "Ошибка: пользователь не найден")
         return
 
-
+    # Получение отчета
     report = user.get_report()
 
-    # Получаем реальные имена счетчиков
+    # Получаем имена счетчиков
     cold_list = cold_water_meters[user.water_count]
     hot_list = hot_water_meters[user.water_count]
     elec_list = electricity_meters[user.electricity_type]
@@ -282,26 +315,7 @@ def confirm_all(call):
     el1 = int(data.get(elec_list[0], 0)) if len(elec_list) > 0 else 0
     el2 = int(data.get(elec_list[1], 0)) if len(elec_list) > 1 else 0
 
-    now = datetime.now()
     month = now.strftime('%m.%Y')
-
-    # Создаем таблицу (если не существует)
-    columns = [
-        "telegram_id INTEGER",
-        "apartment INTEGER",
-        "month VARCHAR",
-        "type_water_meter INTEGER",
-        "type_electricity_meter INTEGER",
-        "cold_water_1 INTEGER",
-        "cold_water_2 INTEGER",
-        "cold_water_3 INTEGER",
-        "hot_water_1 INTEGER",
-        "hot_water_2 INTEGER",
-        "hot_water_3 INTEGER",
-        "electricity_1 INTEGER",
-        "electricity_2 INTEGER"
-    ]
-    create_table('meters_data', columns)
 
     # Вставляем данные
     columns = [
@@ -323,6 +337,7 @@ def confirm_all(call):
     ]
     insert_to_database('meters_data', columns, values)
 
+    # Отправка отчета
     bot.send_message(ACCOUNTANT_ID, f"📨 Показания от кв. {user.apartment}:\n{report}")
     user.clear_metrics()
     temp_users.pop(call.from_user.id, None)
@@ -332,11 +347,13 @@ def confirm_all(call):
 
 @bot.callback_query_handler(func=lambda call: call.data == 'back_edit')
 def back_edit(call):
+    # Проверка существования пользователя
     user = temp_users.get(call.from_user.id)
     if not user:
         bot.send_message(call.message.chat.id, "Ошибка: пользователь не найден")
         return
 
+    # Создание сообщения с кнопками
     markup = create_meters_markup(user)
     month, year = get_month()
     bot.send_message(call.message.chat.id, f"📊 Возврат к редактированию за {month} {year}", reply_markup=markup)
@@ -344,28 +361,17 @@ def back_edit(call):
 
 @bot.callback_query_handler(func=lambda call: call.data == 'cancel')
 def cancel(call):
+    # Отмена ввода
     user = temp_users.get(call.from_user.id)
     if user:
         user.clear_metrics()
         temp_users.pop(call.from_user.id, None)
-
 
     bot.send_message(call.message.chat.id, "🚫 Ввод отменён")
 
 
 @bot.message_handler(commands=['manager', 'accountant', 'electric', 'plumber'])
 def handle_address_request(message):
-    # Создание таблицы обращениями
-    create_table('appeals', [
-        'user_id INTEGER',
-        'apartment INTEGER',
-        'message_text TEXT',
-        'recipient_type TEXT',
-        'message_id INTEGER',
-        "status TEXT DEFAULT 'open'",
-        'timestamp DATETIME DEFAULT CURRENT_TIMESTAMP'
-    ])
-
     # Определяем тип получателя и текст запроса
     command = message.text.split('@')[0]
     recipient_data = {
@@ -475,67 +481,12 @@ def process_staff_reply(message):
 
     # Обновляем статус в БД
     update_values('appeals',
-                       {'status': 'closed'},
-                       {'user_id': user_id, 'message_id': original_message_id}
-                       )
+                  {'status': 'closed'},
+                  {'user_id': user_id, 'message_id': original_message_id}
+                  )
 
     bot.send_message(staff_id, "✅ Ответ отправлен")
     del active_dialogs[staff_id]
-
-
-
-# Авторизация привелегированных пользователей
-@bot.message_handler()
-def auth(message):
-    if message.text == ADMIN_CODE:
-        global ADMIN_ID
-        ADMIN_ID = message.chat.id
-        bot.send_message(message.chat.id, "✅ Вы авторизованы как админ")
-        print(
-            f'{datetime.now()} Админ авторизован. ID = {message.chat.id}: {message.from_user.first_name} {message.from_user.last_name}')
-
-    if message.text == MANAGER_CODE:
-        global MANAGER_ID
-        MANAGER_ID = message.chat.id
-        manager = message.from_user
-        bot.send_message(message.chat.id, "✅ Вы авторизованы как председатель")
-        bot.send_message(ADMIN_ID,
-                         f'‼ Пользователь {manager.first_name} {manager.last_name} авторизоан как Председатель')
-        print(
-            f'{datetime.now()} Председатель авторизован. ID = {message.chat.id}: {message.from_user.first_name} {message.from_user.last_name}')
-
-    if message.text == ACCOUNTANT_CODE:
-        global ACCOUNTANT_ID
-        ACCOUNTANT_ID = message.chat.id
-        accountant = message.from_user
-        bot.send_message(message.chat.id, "✅ Вы авторизованы как Бухгалтер")
-
-        bot.send_message(ADMIN_ID,
-                         f'‼ Пользователь {accountant.first_name} {accountant.last_name} авторизоан как Бухгалтер')
-        print(
-            f'{datetime.now()} Бухгалтер авторизован. ID = {message.chat.id}: {message.from_user.first_name} {message.from_user.last_name}')
-
-    if message.text == ELECTRIC_CODE:
-        global ELECTRIC_ID
-        ELECTRIC_ID = message.chat.id
-        electric = message.from_user
-        bot.send_message(message.chat.id, "✅ Вы авторизованы как Электрик")
-
-        bot.send_message(ADMIN_ID,
-                         f'‼ Пользователь {electric.first_name} {electric.last_name} авторизоан как Электрик')
-        print(
-            f'{datetime.now()} Электрик авторизован. ID = {message.chat.id}: {message.from_user.first_name} {message.from_user.last_name}')
-
-    if message.text == PLUMBER_CODE:
-        global PLUMBER_ID
-        PLUMBER_ID = message.chat.id
-        plumber = message.from_user
-        bot.send_message(message.chat.id, "✅ Вы авторизованы как Сантехник")
-
-        bot.send_message(ADMIN_ID,
-                         f'‼ Пользователь {plumber.first_name} {plumber.last_name} авторизоан как Электрик')
-        print(
-            f'{datetime.now()} Сантехник авторизован. ID = {message.chat.id}: {message.from_user.first_name} {message.from_user.last_name}')
 
 
 def notifications():
@@ -581,8 +532,61 @@ def notifications():
         time.sleep(60)
 
 
+def init_db():
+    create_table('users', [
+        "telegram_id INTEGER UNIQUE",
+        "apartment INTEGER",
+        "water_count INTEGER",
+        "electricity_count INTEGER"
+    ])
+    create_table('meters_data', [
+        "telegram_id INTEGER",
+        "apartment INTEGER",
+        "month VARCHAR",
+        "type_water_meter INTEGER",
+        "type_electricity_meter INTEGER",
+        "cold_water_1 INTEGER",
+        "cold_water_2 INTEGER",
+        "cold_water_3 INTEGER",
+        "hot_water_1 INTEGER",
+        "hot_water_2 INTEGER",
+        "hot_water_3 INTEGER",
+        "electricity_1 INTEGER",
+        "electricity_2 INTEGER"
+    ])
+    create_table('appeals', [
+        'sender_id INTEGER',
+        'apartment INTEGER',
+        'message_text TEXT',
+        'recipient_post TEXT',
+        'answer_text TEXT',
+        "status TEXT DEFAULT 'open'",
+    ])
+    create_table('staff', [
+        'post TEXT',
+        'telegram_id INTEGER',
+        'name TEXT',
+        'auth_code TEXT'
+    ])
+
+
+def init_staff():
+    tablename = 'staff'
+    table = select_all(tablename)
+    if table:
+        return
+    columns = ['post', 'auth_code']
+    insert_to_database(tablename, columns, ['Админ', ADMIN_CODE])
+    insert_to_database(tablename, columns, ['Председатель', MANAGER_CODE])
+    insert_to_database(tablename, columns, ['Бухгалтер', ACCOUNTANT_CODE])
+    insert_to_database(tablename, columns, ['Сантехник', PLUMBER_CODE])
+    insert_to_database(tablename, columns, ['Электрик', ELECTRIC_CODE])
+
+
 # Запуск
 if __name__ == '__main__':
+    init_db()
+    init_staff()
     now = datetime.now()
     print(f"{now} Бот запущен")
     threading.Thread(target=notifications, daemon=True).start()
