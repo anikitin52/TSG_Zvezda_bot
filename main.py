@@ -111,6 +111,7 @@ def select_meters(call):
     del user_data[user_id]
     print(f'{now} Новый пользователь: {user_id}. Квартира {apartment}')
     bot.send_message(call.message.chat.id, "✅ Регистрация успешна! Перейдите в профиль: /account")
+    ADMIN_ID = find_staff_id('Админ')
     bot.send_message(ADMIN_ID,
                      f"Новый пользователь: кв. {apartment}, \n"
                      f"счетчиков воды: {water_count}, \n"
@@ -119,6 +120,7 @@ def select_meters(call):
 
 @bot.message_handler(commands=['export'])
 def export_data(message):
+    ACCOUNTANT_ID = find_staff_id('Бухгалтер')
     if message.chat.id != ACCOUNTANT_ID:
         bot.send_message(message.chat.id, "У вас нет доступа к этой команде")
         return
@@ -341,6 +343,7 @@ def confirm_all(call):
     insert_to_database('meters_data', columns, values)
 
     # Отправка отчета
+    ACCOUNTANT_ID = find_staff_id('Бухгалтер')
     bot.send_message(ACCOUNTANT_ID, f"📨 Показания от кв. {user.apartment}:\n{report}")
     user.clear_metrics()
     temp_users.pop(call.from_user.id, None)
@@ -377,6 +380,10 @@ def cancel(call):
 def handle_address_request(message):
     # Определяем тип получателя и текст запроса
     command = message.text.split('@')[0]
+    MANAGER_ID = find_staff_id('Председатель')
+    ACCOUNTANT_ID = find_staff_id('Бухгалтер')
+    PLUMBER_ID = find_staff_id('Сантехник')
+    ELECTRIC_ID = find_staff_id('Электрик')
     recipient_data = {
         '/manager': {
             'id': MANAGER_ID,
@@ -478,6 +485,11 @@ def process_staff_reply(message):
     if staff_id not in active_dialogs:
         return
 
+    MANAGER_ID = find_staff_id('Председатель')
+    ACCOUNTANT_ID = find_staff_id('Бухгалтер')
+    PLUMBER_ID = find_staff_id('Сантехник')
+    ELECTRIC_ID = find_staff_id('Электрик')
+
     user_id, original_message_id = active_dialogs[staff_id]
     if staff_id == MANAGER_ID:
         staff_position = "председателя ТСЖ"
@@ -540,6 +552,8 @@ def notifications():
                 user_id = user[1]
                 if users_apartment not in apartments:
                     bot.send_message(user_id, "🔴 Прием показаний закрыт до следующего месяца")
+
+            ACCOUNTANT_ID = find_staff_id('Бухгалтер')
             send_table(ACCOUNTANT_ID)
             clear_table('meters_data')
 
