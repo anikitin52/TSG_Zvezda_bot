@@ -4,7 +4,7 @@ import threading
 import time
 
 from config import *
-from data.models import User
+from data.models import User, Appeal
 from services.utils import *
 from data.data import *
 from services.exel_export import send_table
@@ -190,7 +190,10 @@ def enter_auth_code(message):
 @bot.message_handler(commands=['send'])
 def send_data(message):
     # Проверка времени отправки
-    if now.day < start_collection[0] or now.day > end_collection[0]:
+    if not (start_collection[0] <= now.day <= end_collection[0] and
+            not (now.day == end_collection[0] and
+                 (now.hour > end_collection[1] or
+                  (now.hour == end_collection[1] and now.minute > end_collection[2])))):
         bot.send_message(message.chat.id,
                          "❌ Прием показаний закрыт. Показания принимаются с 23 по 27 число каждого месяца")
         return
@@ -378,24 +381,28 @@ def handle_address_request(message):
         '/manager': {
             'id': MANAGER_ID,
             'request_text': "✉️ Напишите своё обращение к председателю ТСЖ",
+            'recipient': "Председатель",
             'message_type': 'Обращение председателю',
             'response_success': "✅ Обращение успешно отправлено председателю"
         },
         '/accountant': {
             'id': ACCOUNTANT_ID,
             'request_text': "✉️ Напишите своё обращение к бухгалтеру",
+            'recipient': "Бухгалтер",
             'message_type': 'Обращение бухгалтеру',
             'response_success': "✅ Обращение успешно отправлено бухгалтеру"
         },
         '/electric': {
             'id': ELECTRIC_ID,
             'request_text': "✉️ Напишите текст заявки на работу электрика",
+            'recipient': "Электрик",
             'message_type': 'Заявка на работу слектрика',
             'response_success': "✅ Заявка на работу электрика успешно отправлена"
         },
         '/plumber': {
             'id': PLUMBER_ID,
             'request_text': "✉️ Напишите текст заявки на работу сантехника",
+            'recipient': "Сантехник",
             'message_type': 'Заявка на работу сантехника',
             'response_success': "✅ Заявка на работу сантехника успешно отправлена"
         }
@@ -415,10 +422,17 @@ def send_address(message, recipient_info):
     result = find_user_by_id("users", sender_id, "apartment")
     apartment = result[0] if result else "Неизвестна"
 
+    ap = Appeal(
+        sender_id=message.from_user.id,
+        apartment=apartment,
+        message_text=text,
+        recirient_post=recipient_info['recipient']
+    )
+
     # Сохраняем обращение в базу данных
     insert_to_database('appeals',
-                       ['user_id', 'apartment', 'message_text', 'recipient_type', 'message_id'],
-                       [sender_id, apartment, text, recipient_info['message_type'], message.message_id]
+                       ['sender_id', 'apartment', 'message_text', 'recipient_post'],
+                       [ap.sender_id, ap.apartment, ap.message_text, ap.recipient_post]
                        )
 
     # Кнопка отправки сообщения
@@ -431,7 +445,7 @@ def send_address(message, recipient_info):
     # Формируем и отправляем сообщение
     bot.send_message(
         recipient_info['id'],
-        f'📨 {recipient_info["message_type"]}:\n'
+        f'📨 Обращение от жителя:\n'
         f'👤 [{sender_name} {sender_surname}](tg://user?id={sender_id})\n'
         f'🏠 Квартира: {apartment}\n\n'
         f'_{text}_',
@@ -481,8 +495,8 @@ def process_staff_reply(message):
 
     # Обновляем статус в БД
     update_values('appeals',
-                  {'status': 'closed'},
-                  {'user_id': user_id, 'message_id': original_message_id}
+                  {'status': 'closed', 'answer_text': message.text},
+                  {'sender_id': user_id, 'status': 'open'}
                   )
 
     bot.send_message(staff_id, "✅ Ответ отправлен")

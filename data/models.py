@@ -54,3 +54,15 @@ class User:
         current_meters[self.telegram_id] = user_data
 
         return "\n".join(report_lines)
+
+class Appeal:
+    def __init__(self, sender_id, apartment, message_text, recirient_post, answer_text=None, status='open'):
+        self.sender_id = sender_id
+        self.apartment = apartment
+        self.message_text = message_text
+        self.recipient_post = recirient_post
+        self.answer_text = answer_text
+        self.status = status
+
+
+
