@@ -5,95 +5,183 @@ db = 'tsg_database.sql'
 
 
 def create_table(table_name, table_columns):
-    conn = sqlite3.connect(db)
-    cur = conn.cursor()
-    columns_str = ", ".join(table_columns)
+    conn = None
+    cur = None
+    try:
+        conn = sqlite3.connect(db)
+        cur = conn.cursor()
+        columns_str = ", ".join(table_columns)
 
-    cur.execute(f"""
-            CREATE TABLE IF NOT EXISTS {table_name} (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                {columns_str}
-            )
-        """)
-
-    conn.commit()
-    cur.close()
-    conn.close()
+        # Внимание: имя таблицы и колонки нельзя параметризовать в sqlite,
+        # поэтому убеждайся, что table_name и table_columns контролируются в коде и безопасны
+        cur.execute(f"""
+                CREATE TABLE IF NOT EXISTS {table_name} (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    {columns_str}
+                )
+            """)
+        conn.commit()
+    except Exception as e:
+        print(f"Ошибка в create_table: {e}")
+        raise
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
 
 
 def insert_to_database(tablename, columns, values):
     if len(columns) != len(values):
         raise ValueError("Количество колонок и значений должно совпадать")
 
-    columns_str = ", ".join(columns)
-    placeholders = ", ".join(["?"] * len(values))
+    conn = None
+    cur = None
+    try:
+        conn = sqlite3.connect(db)
+        cur = conn.cursor()
 
-    conn = sqlite3.connect(db)
-    cur = conn.cursor()
-    cur.execute(f"""
-            INSERT INTO {tablename} ({columns_str}) 
-            VALUES ({placeholders})
-            """, values)
-    conn.commit()
-    cur.close()
-    conn.close()
+        columns_str = ", ".join(columns)
+        placeholders = ", ".join(["?"] * len(values))
+
+        cur.execute(
+            f"INSERT INTO {tablename} ({columns_str}) VALUES ({placeholders})",
+            values
+        )
+        conn.commit()
+    except Exception as e:
+        print(f"Ошибка в insert_to_database: {e}")
+        raise
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
 
 
 def find_user_by_id(table_name, user_id, parameter='*'):
-    conn = sqlite3.connect(db)
-    cur = conn.cursor()
-    cur.execute(f"SELECT {parameter} FROM {table_name} WHERE telegram_id = ?", (user_id,))
-    result = cur.fetchone()
-    cur.close()
-    conn.close()
+    conn = None
+    cur = None
+    result = None
+    try:
+        conn = sqlite3.connect(db)
+        cur = conn.cursor()
+
+        # Для безопасности лучше параметр parameter фиксировать в коде,
+        # т.к. подстановка напрямую в запрос опасна, если приходит извне
+        cur.execute(
+            f"SELECT {parameter} FROM {table_name} WHERE telegram_id = ?",
+            (user_id,)
+        )
+        result = cur.fetchone()
+    except Exception as e:
+        print(f"Ошибка в find_user_by_id: {e}")
+        raise
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
     return result
 
 
 def select_all(tablename):
-    conn = sqlite3.connect(db)
-    cur = conn.cursor()
-    cur.execute(f"SELECT * FROM {tablename}")
-    result = cur.fetchall()
-    conn.commit()
-    cur.close()
-    conn.close()
+    conn = None
+    cur = None
+    result = None
+    try:
+        conn = sqlite3.connect(db)
+        cur = conn.cursor()
+        cur.execute(f"SELECT * FROM {tablename}")
+        result = cur.fetchall()
+    except Exception as e:
+        print(f"Ошибка в select_all: {e}")
+        raise
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
     return result
 
+
 def select_all_where(table_name, where_condition):
-    conn = sqlite3.connect(db)
-    cur = conn.cursor()
-    cur.execute(f"SELECT * FROM {table_name} WHERE {where_condition}")
-    result = cur.fetchall()
-    conn.close()
+    conn = None
+    cur = None
+    result = None
+    try:
+        conn = sqlite3.connect(db)
+        cur = conn.cursor()
+
+        cur.execute(f"SELECT * FROM {table_name} WHERE {where_condition}")
+        result = cur.fetchall()
+    except Exception as e:
+        print(f"Ошибка в select_all_where: {e}")
+        raise
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
     return result
 
 
 def clear_table(tablename):
-    conn = sqlite3.connect(db)
-    cur = conn.cursor()
+    conn = None
+    cur = None
+    try:
+        conn = sqlite3.connect(db)
+        cur = conn.cursor()
 
-    # Очищаем таблицу и сбрасываем автоинкремент
-    cur.execute(f"DELETE FROM {tablename}")
-    cur.execute(f"DELETE FROM sqlite_sequence WHERE name='{tablename}'")
-
-    conn.commit()
-    cur.close()
-    conn.close()
-    print(f'{datetime.now()} Таблица {tablename} очищена, автоинкремент сброшен')
-
+        cur.execute(f"DELETE FROM {tablename}")
+        cur.execute("DELETE FROM sqlite_sequence WHERE name = ?", (tablename,))
+        conn.commit()
+        print(f'{datetime.now()} Таблица {tablename} очищена, автоинкремент сброшен')
+    except Exception as e:
+        print(f"Ошибка в clear_table: {e}")
+        raise
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
 
 
 def update_values(table_name, set_values, where_conditions):
+    conn = None
+    cur = None
+    try:
+        conn = sqlite3.connect(db)
+        cur = conn.cursor()
+
+        set_clause = ", ".join([f"{k} = ?" for k in set_values.keys()])
+        where_clause = " AND ".join([f"{k} = ?" for k in where_conditions.keys()])
+
+        parameters = list(set_values.values()) + list(where_conditions.values())
+
+        cur.execute(
+            f"UPDATE {table_name} SET {set_clause} WHERE {where_clause}",
+            parameters
+        )
+        conn.commit()
+    except Exception as e:
+        print(f"Ошибка в update_values: {e}")
+        raise
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
+def find_staff_id(role, table_name='staff'):
     conn = sqlite3.connect(db)
     cur = conn.cursor()
 
-    set_clause = ", ".join([f"{k} = ?" for k in set_values.keys()])
-    where_clause = " AND ".join([f"{k} = ?" for k in where_conditions.keys()])
+    cur.execute(f"SELECT telegram_id FROM {table_name} WHERE post = ?", (role,))
+    result = cur.fetchone()
 
-    cur.execute(
-        f"UPDATE {table_name} SET {set_clause} WHERE {where_clause}",
-        list(set_values.values()) + list(where_conditions.values())
-    )
-
-    conn.commit()
+    cur.close()
     conn.close()
+
+    return result[0] if result else None
