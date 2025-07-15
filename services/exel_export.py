@@ -3,6 +3,7 @@ import pandas as pd
 import sqlite3
 from datetime import datetime
 import openpyxl
+from services.logger import logger
 
 from config import BOT_TOKEN
 
@@ -22,7 +23,7 @@ def create_exel_file():
         parameters = 'apartment, type_water_meter, type_electricity_meter, cold_water_1,cold_water_2, cold_water_3, hot_water_1, hot_water_2, hot_water_3, electricity_1, electricity_2'
         df = pd.read_sql_query(f"SELECT {parameters} FROM meters_data", conn)
     except Exception as e:
-        print(f'Ошибка в create_exel_file: {e}')
+        logger.error(f'Ошибка создания Exel-файла: {e}')
         raise
     finally:
         df.to_excel(f"Показания счетчиков {current_month}.xlsx", index=False)
@@ -41,4 +42,4 @@ def send_table(id):
             bot.send_document(id, f)
     except Exception as e:
         bot.send_message(id, "Файл не найден")
-        print(f'Ошибка отправки Exel-файла: {e}')
+        logger.error(f'Ошибка отправки Exel-файла: {e}')

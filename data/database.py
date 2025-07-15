@@ -1,5 +1,6 @@
 import sqlite3
 from datetime import datetime
+from services.logger import logger
 
 db = 'tsg_database.sql'
 
@@ -26,9 +27,10 @@ def create_table(table_name, table_columns):
                     {columns_str}
                 )
             """)
+        logger.info(f'Создана таблица {table_name}')
         conn.commit()
     except Exception as e:
-        print(f"Ошибка в create_table: {e}")
+        logger.error(f"Ошибка создания таблицы {table_name}: {e}")
         raise
     finally:
         if cur:
@@ -61,9 +63,10 @@ def insert_to_database(tablename, columns, values):
             f"INSERT INTO {tablename} ({columns_str}) VALUES ({placeholders})",
             values
         )
+        logger.info(f'Добавлены данные в таблицу {tablename}')
         conn.commit()
     except Exception as e:
-        print(f"Ошибка в insert_to_database: {e}")
+        logger.error(f"Ошибка вставки в таблицу {tablename}: {e}")
         raise
     finally:
         if cur:
@@ -93,7 +96,7 @@ def find_user_by_id(table_name, user_id, parameter='*'):
         )
         result = cur.fetchone()
     except Exception as e:
-        print(f"Ошибка в find_user_by_id: {e}")
+        logger.error(f"Ошибка поиска пользователя: {e}")
         raise
     finally:
         if cur:
@@ -118,7 +121,7 @@ def select_all(tablename):
         cur.execute(f"SELECT * FROM {tablename}")
         result = cur.fetchall()
     except Exception as e:
-        print(f"Ошибка в select_all: {e}")
+        logger.error(f"Ошибка в функции select_all: {e}")
         raise
     finally:
         if cur:
@@ -145,7 +148,7 @@ def select_all_where(table_name, where_condition):
         cur.execute(f"SELECT * FROM {table_name} WHERE {where_condition}")
         result = cur.fetchall()
     except Exception as e:
-        print(f"Ошибка в select_all_where: {e}")
+        logger.error(f"Ошибка в функции select_all_where: {e}")
         raise
     finally:
         if cur:
@@ -170,7 +173,7 @@ def clear_table(tablename):
         cur.execute(f"DELETE FROM {tablename}")
         cur.execute("DELETE FROM sqlite_sequence WHERE name = ?", (tablename,))
         conn.commit()
-        print(f'{datetime.now()} Таблица {tablename} очищена, автоинкремент сброшен')
+        logger.warning(f'Таблица {tablename} очищена, автоинкремент сброшен')
     except Exception as e:
         print(f"Ошибка в clear_table: {e}")
         raise
@@ -206,7 +209,7 @@ def update_values(table_name, set_values, where_conditions):
         )
         conn.commit()
     except Exception as e:
-        print(f"Ошибка в update_values: {e}")
+        logger.error(f"Ошибка в функции update_values: {e}")
         raise
     finally:
         if cur:
@@ -232,7 +235,7 @@ def find_staff_id(role, table_name='staff'):
         result = cur.fetchone()
 
     except Exception as e:
-        print(f"Ошибка в find_staff_id: {e}")
+        logger.error(f"Ошибка в функции find_staff_id: {e}")
         raise
     finally:
         if cur:

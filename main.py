@@ -9,6 +9,7 @@ from services.utils import *
 from data.data import *
 from services.exel_export import send_table
 from data.database import *
+from services.logger import logger
 
 bot = TeleBot(BOT_TOKEN)
 now = datetime.now()
@@ -34,8 +35,8 @@ def start(message):
         # Пользователь не найден. Начинаем регистрацию
         markup = types.InlineKeyboardMarkup()
         markup.add(types.InlineKeyboardButton("Зарегистрироваться", callback_data='register'))
-        print(f"{now} Пользователь {user_id} запустил бота")
         bot.send_message(message.chat.id, "👋 Добро пожаловать! Для начала зарегистрируйтесь:", reply_markup=markup)
+        logger.info(f'Пользователь {message.from_user.id} запустил бота')
 
 
 @bot.callback_query_handler(func=lambda call: call.data == 'register')
@@ -138,7 +139,7 @@ def select_meters(call):
                        [user_id, int(apartment), int(water_count), int(elec_type)])
 
     del user_data[user_id]
-    print(f'{now} Новый пользователь: {user_id}. Квартира {apartment}')
+    logger.info(f'Новый пользователь: {user_id}. Квартира {apartment}')
     bot.send_message(call.message.chat.id, "✅ Регистрация успешна! Перейдите в профиль: /account")
     ADMIN_ID = find_staff_id('Админ')
     bot.send_message(ADMIN_ID,
@@ -159,7 +160,7 @@ def export_data(message):
         bot.send_message(message.chat.id, "У вас нет доступа к этой команде")
         return
     else:
-        print(f'{now} Пользоватлель {message.chat.id} экспортировал Exel-таблицу')
+        logger.info(f'Пользоватлель {message.chat.id} экспортировал Exel-таблицу')
         send_table(message.chat.id)
 
 
@@ -191,6 +192,7 @@ def account(message):
             f"Счётчиков воды: {water_count}\n"
             f"Счетчик электричества: {rate}"
         )
+        logger.info(f'Пользователь {message.from_user.id} Просматривает профиль')
     else:
         bot.send_message(
             message.chat.id,
@@ -230,11 +232,14 @@ def enter_auth_code(message):
                           {'auth_code': auth_code}
                           )
             bot.send_message(message.chat.id, f'Вы успешно авторизованы как {staff_post}')
+            logger.info(f'Пользоватлеь {message.chat.id} авторизован как {staff_post}')
+            bot.send_message(find_staff_id('Админ'), f"⚠️Пользователь {message.from_user.id}: {message.from_user.first_name} {message.from_user.last_name} авторизован как {staff_post}")
             return
         else:
             continue
     else:
         msg = bot.send_message(message.chat.id, "Неверный код авторизации")
+        logger.info(f'Пользователь {message.from_user.id} ввел неверный код авторизации')
         bot.register_next_step_handler(msg, enter_auth_code)
 
 
@@ -427,7 +432,7 @@ def confirm_all(call):
     user.clear_metrics()
     temp_users.pop(call.from_user.id, None)
     bot.send_message(call.message.chat.id, "✅ Показания отправлены")
-    print(f'{datetime.now()} Показания переданы. Квартира {user.apartment}')
+    logger.info(f'Показания переданы. Квартира {user.apartment}')
 
 
 @bot.callback_query_handler(func=lambda call: call.data == 'back_edit')
@@ -559,12 +564,13 @@ def send_address(message, recipient_info):
         parse_mode="Markdown",
         reply_markup=markup
     )
+    logger.info(f"Отправлено обращение от пользователя{sender_id}. Получатель {recipient_info['recipient']}")
 
     # Отправляем подтверждение пользователю
     bot.send_message(message.chat.id, recipient_info['response_success'])
 
     # Логируем действие
-    print(f'{datetime.now()} {recipient_info["message_type"]} отправлено. Кв. {apartment}, ID {sender_id}')
+    logger.info(f'{recipient_info["message_type"]} отправлено. Кв. {apartment}, ID {sender_id}')
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('reply_'))
@@ -620,7 +626,7 @@ def process_staff_reply(message):
                   {'status': 'closed', 'answer_text': message.text},
                   {'sender_id': user_id, 'status': 'open'}
                   )
-
+    logger.info(f'Ответ {staff_position} на обращение')
     bot.send_message(staff_id, "✅ Ответ отправлен")
     del active_dialogs[staff_id]
 
@@ -641,7 +647,7 @@ def notifications():
         # Начало сбора показаний
         if now.day == start_collection[0] and now.hour == start_collection[1] and now.minute == start_collection[2]:
             users = select_all('users')
-            print(f'{now} Примем показаний счетчиков открыт')
+            logger.info("Открыт сбор показаний счетчиков")
             for user in users:
                 bot.send_message(user[1], "📬 Открыт сбор показаний счетчиков")
 
@@ -657,6 +663,7 @@ def notifications():
                 user_id = user[1]
                 if users_apartment not in apartments:
                     bot.send_message(user_id, "⏰ Пора передать показания счетчиков! /send")
+                    logger.info(f"Напоминание отправлено пользователю {user_id}")
 
         # Завершение сбора
         if now.day == end_collection[0] and now.hour == end_collection[1] and now.minute == end_collection[2]:
@@ -669,11 +676,15 @@ def notifications():
                 users_apartment = user[2]
                 user_id = user[1]
                 if users_apartment not in apartments:
+                    logger.info(f"Уведомление о закрытии сбора отправлено {user_id}")
                     bot.send_message(user_id, "🔴 Прием показаний закрыт до следующего месяца")
 
             ACCOUNTANT_ID = find_staff_id('Бухгалтер')
             send_table(ACCOUNTANT_ID)
+            logger.info('Таблица отправвлена бухгалтеру')
             clear_table('meters_data')
+            # TODO: Добавить сохранение
+            logger.warning('Таблица показаний очищена')
 
         time.sleep(60)
 
@@ -742,6 +753,6 @@ if __name__ == '__main__':
     init_db()
     init_staff()
     now = datetime.now()
-    print(f"{now} Бот запущен")
+    logger.info('Бот запущен')
     threading.Thread(target=notifications, daemon=True).start()
     bot.polling(none_stop=True)
