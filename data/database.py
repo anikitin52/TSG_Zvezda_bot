@@ -222,13 +222,22 @@ def find_staff_id(role, table_name='staff'):
     :param table_name: Название таблицы (по умолчанию "staff")
     :return: id сотрудника в Telegram (если сотрудник не найден - None)
     """
-    conn = sqlite3.connect(db)
-    cur = conn.cursor()
+    cur = None
+    conn = None
+    try:
+        conn = sqlite3.connect(db)
+        cur = conn.cursor()
 
-    cur.execute(f"SELECT telegram_id FROM {table_name} WHERE post = ?", (role,))
-    result = cur.fetchone()
+        cur.execute(f"SELECT telegram_id FROM {table_name} WHERE post = ?", (role,))
+        result = cur.fetchone()
 
-    cur.close()
-    conn.close()
+    except Exception as e:
+        print(f"Ошибка в find_staff_id: {e}")
+        raise
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
 
     return result[0] if result else None
