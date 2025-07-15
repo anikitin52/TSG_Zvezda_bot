@@ -5,6 +5,12 @@ db = 'tsg_database.sql'
 
 
 def create_table(table_name, table_columns):
+    """
+    Создание таблицы с заданным названием и колонками
+    :param table_name: Строка - Название таблицы
+    :param table_columns: Строка - Список колонок
+    :return: None
+    """
     conn = None
     cur = None
     try:
@@ -32,6 +38,13 @@ def create_table(table_name, table_columns):
 
 
 def insert_to_database(tablename, columns, values):
+    """
+    Вставка значений в таблицу
+    :param tablename: Строка - название таблицы
+    :param columns: Строка - названия колонок
+    :param values: Строка - значения, соответствующие колонкам
+    :return: None
+    """
     if len(columns) != len(values):
         raise ValueError("Количество колонок и значений должно совпадать")
 
@@ -60,6 +73,13 @@ def insert_to_database(tablename, columns, values):
 
 
 def find_user_by_id(table_name, user_id, parameter='*'):
+    """
+    Поиск пользователя по id в заданной таблице
+    :param table_name: Строка - название таблицы
+    :param user_id: Целое число - id пользователя
+    :param parameter: Строка - параметры посика. По умлочанию: * (все)
+    :return: Результат - данные о конкретном пользователе (если пользователь не найден - None)
+    """
     conn = None
     cur = None
     result = None
@@ -67,8 +87,6 @@ def find_user_by_id(table_name, user_id, parameter='*'):
         conn = sqlite3.connect(db)
         cur = conn.cursor()
 
-        # Для безопасности лучше параметр parameter фиксировать в коде,
-        # т.к. подстановка напрямую в запрос опасна, если приходит извне
         cur.execute(
             f"SELECT {parameter} FROM {table_name} WHERE telegram_id = ?",
             (user_id,)
@@ -86,6 +104,11 @@ def find_user_by_id(table_name, user_id, parameter='*'):
 
 
 def select_all(tablename):
+    """
+    Выбор всех строк в заданной таблице
+    :param tablename: Строка - название таблицы
+    :return: Результат - все данные из таблицы (если таблица не найдена - None)
+    """
     conn = None
     cur = None
     result = None
@@ -106,6 +129,12 @@ def select_all(tablename):
 
 
 def select_all_where(table_name, where_condition):
+    """
+    Поиск всех значений в таблице при заданном условии
+    :param table_name: Строка - название таблицы
+    :param where_condition: Строка - условие поиска
+    :return: Все строки таблицы, соответствующие заданному условию
+    """
     conn = None
     cur = None
     result = None
@@ -127,6 +156,11 @@ def select_all_where(table_name, where_condition):
 
 
 def clear_table(tablename):
+    """
+    Очистка данных в таблиуе
+    :param tablename: Строка - название таблицы
+    :return: None
+    """
     conn = None
     cur = None
     try:
@@ -148,6 +182,13 @@ def clear_table(tablename):
 
 
 def update_values(table_name, set_values, where_conditions):
+    """
+    Изменение значений в таблице
+    :param table_name: Строка - название таблицы
+    :param set_values: Значения, которые нужно обновить
+    :param where_conditions: Новые значеиня
+    :return: None
+    """
     conn = None
     cur = None
     try:
@@ -175,6 +216,12 @@ def update_values(table_name, set_values, where_conditions):
 
 
 def find_staff_id(role, table_name='staff'):
+    """
+    Поиск сотрудника по id
+    :param role: Строка - должность сотрудника
+    :param table_name: Название таблицы (по умолчанию "staff")
+    :return: id сотрудника в Telegram (если сотрудник не найден - None)
+    """
     conn = sqlite3.connect(db)
     cur = conn.cursor()
 

@@ -4,11 +4,20 @@ from data.data import cold_water_meters, hot_water_meters, electricity_meters, m
 
 
 def get_month():
+    """
+    Получение текущего месяца
+    :return: Текущий месяц, текцщий год
+    """
     now = datetime.now()
     return months[now.month], now.year
 
 
 def create_meters_markup(user):
+    """
+    Создание кнопок ввода счетчиков
+    :param user: Пользователь (объект)
+    :return: markup с конпками
+    """
     markup = types.InlineKeyboardMarkup()
     counter = 1
 
@@ -43,6 +52,11 @@ def create_meters_markup(user):
 
 
 def create_review_markup(user):
+    """
+    Создание кнопок ввода счетчиков при проверке введенных данных
+    :param user: Пользователь (объект)
+    :return: markup из кнопок
+    """
     markup = types.InlineKeyboardMarkup()
     counter = 1
 

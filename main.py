@@ -16,6 +16,12 @@ now = datetime.now()
 
 @bot.message_handler(commands=['start'])  # Запуск бота
 def start(message):
+    """
+    Обработка команды /start -> Запуск бота. Начало регистрации пользователя.
+    :param message: Сообщение от пользователя - Команда /start
+    :return: None
+    """
+
     tablename = 'users'
     user_id = message.from_user.id
 
@@ -34,12 +40,24 @@ def start(message):
 
 @bot.callback_query_handler(func=lambda call: call.data == 'register')
 def add_apartment_number(call):
+    """
+    Обработка нажатия кнопки "Зарегистрироваться" -> Требование ввода номера квартиры
+    :param call: Обработчик запроса
+    :return: None
+    """
+
     # Ввод номера квартиры
     msg = bot.send_message(call.message.chat.id, "Введите номер вашей квартиры (1–150):")
     bot.register_next_step_handler(msg, register_apartment)
 
 
 def register_apartment(message):
+    """
+    Проверка корректности ввода номера квартиры
+    Проверка наличия квартиры в БД -> Запрос ввода колисества счетчиков
+    :param message: Сообщение, введенное пользователем
+    :return: None
+    """
     # Проверка корректности номера квартиры
     try:
         apartment = int(message.text.strip())
@@ -65,6 +83,12 @@ def register_apartment(message):
 
 
 def check_water_meters(message):
+    """
+    Проверка корректности ввода количества счетчиков воды
+    Создание кнопок выбора типа электрочсетчика
+    :param message: Сообщение от пользователя
+    :return: None
+    """
     # Проверка корректности ввода счетчиков
     try:
         water_meters = int(message.text.strip())
@@ -94,6 +118,11 @@ def check_water_meters(message):
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('elec_'))
 def select_meters(call):
+    """
+    Завершение регистрации польщователя, добавление в БД
+    :param call: Обработчик запроса
+    :return: None
+    """
     parts = call.data.split('_')
     elec_type = parts[1]  # 1 или 2
     water_count = parts[2]
@@ -120,6 +149,11 @@ def select_meters(call):
 
 @bot.message_handler(commands=['export'])
 def export_data(message):
+    """
+    Обработка команды /export -> Отправка пользователю таблицы с данными
+    :param message: Сообщение от пользователя - команда -> /export
+    :return: None
+    """
     ACCOUNTANT_ID = find_staff_id('Бухгалтер')
     if message.chat.id != ACCOUNTANT_ID:
         bot.send_message(message.chat.id, "У вас нет доступа к этой команде")
@@ -131,6 +165,11 @@ def export_data(message):
 
 @bot.message_handler(commands=['account'])
 def account(message):
+    """
+    Обработка команды /account -> Вывод данных об акаунте пользователя
+    :param message: Сообщение от ползователя - команда /account
+    :return: None
+    """
     # Проверка наличия пользователя
     telegram_id = message.from_user.id
     user_exists = find_user_by_id('users', telegram_id, 'COUNT(*)')[0] > 0
@@ -161,11 +200,21 @@ def account(message):
 
 @bot.message_handler(commands=['auth'])
 def auth(message):
+    """
+    Обработка команды /aunh -> Запуск процесса авторизации сотрудника
+    :param message: Сообщение от пользователя - команда /auth
+    :return: None
+    """
     msg = bot.send_message(message.chat.id, 'Введите код авторизации')
     bot.register_next_step_handler(msg, enter_auth_code)
 
 
 def enter_auth_code(message):
+    """
+    Проверка кода авторизации -> атворизация сотруудника
+    :param message: Сообщение от пользователя - код авторицации
+    :return: None
+    """
     user_id = message.from_user.id
     user_name = f'{message.from_user.first_name or ""} {message.from_user.last_name or ""}'
     auth_code = message.text.strip()
@@ -191,6 +240,11 @@ def enter_auth_code(message):
 
 @bot.message_handler(commands=['send'])
 def send_data(message):
+    """
+    Запуск процесса отправки показаний
+    :param message: Сообщение от пользователя - команда /send
+    :return: None
+    """
     # Проверка времени отправки
     if not (start_collection[0] <= now.day <= end_collection[0] and
             not (now.day == end_collection[0] and
@@ -230,6 +284,11 @@ def send_data(message):
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('meter_'))
 def meter_input(call):
+    """
+    Ввод показаний для выбранного счетчика
+    :param call: Вызов функции для конкретного счетчика
+    :return: None
+    """
     # Ввод показаний для выбранного счетчика
     meter = call.data.split('_')[1]
     current_editing[call.from_user.id] = meter
@@ -238,6 +297,11 @@ def meter_input(call):
 
 
 def process_value(message):
+    """
+    Обработка ввода данных
+    :param message: Сообщение от пользователя - целое число
+    :return: None
+    """
     telegram_id = message.from_user.id
     user = temp_users.get(telegram_id)
     meter = current_editing.get(telegram_id)
@@ -267,6 +331,11 @@ def process_value(message):
 
 @bot.callback_query_handler(func=lambda call: call.data == 'review')
 def review(call):
+    """
+    Проверка введенных данных
+    :param call: Вызов функции с требованием проверки данных
+    :return: None
+    """
     # Проверка наличия пользователя
     user = temp_users.get(call.from_user.id)
     if not user:
@@ -281,6 +350,11 @@ def review(call):
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('edit_'))
 def edit_value(call):
+    """
+    Изменение значений
+    :param call: Вызов функции с требованием изменить ранее введенные значения
+    :return: None
+    """
     # Корректировка значений
     meter = call.data.split('_')[1]
     current_editing[call.from_user.id] = meter
@@ -290,6 +364,11 @@ def edit_value(call):
 
 @bot.callback_query_handler(func=lambda call: call.data == 'confirm_all')
 def confirm_all(call):
+    """
+    Обработка введенных показаний. Запись в БД
+    :param call: вызов функции с требованием записать данные
+    :return: None
+    """
     # Проверка существования пользователя
     user = temp_users.get(call.from_user.id)
     if not user:
@@ -353,6 +432,11 @@ def confirm_all(call):
 
 @bot.callback_query_handler(func=lambda call: call.data == 'back_edit')
 def back_edit(call):
+    """
+    Возврат к редактированию ранее введенных данных
+    :param call: вызов функции с требованием редактирования данных
+    :return: None
+    """
     # Проверка существования пользователя
     user = temp_users.get(call.from_user.id)
     if not user:
@@ -367,6 +451,11 @@ def back_edit(call):
 
 @bot.callback_query_handler(func=lambda call: call.data == 'cancel')
 def cancel(call):
+    """
+    Отмена ввода показаний
+    :param call: Вызов функции с требованием отмены ввода показаний
+    :return: None
+    """
     # Отмена ввода
     user = temp_users.get(call.from_user.id)
     if user:
@@ -378,6 +467,11 @@ def cancel(call):
 
 @bot.message_handler(commands=['manager', 'accountant', 'electric', 'plumber'])
 def handle_address_request(message):
+    """
+    Выбор получателя обращения / заявки на работу
+    :param message: Сообщение от польщователя - команда, соотвествующая получателю обращения
+    :return: None
+    """
     # Определяем тип получателя и текст запроса
     command = message.text.split('@')[0]
     MANAGER_ID = find_staff_id('Председатель')
@@ -420,6 +514,12 @@ def handle_address_request(message):
 
 
 def send_address(message, recipient_info):
+    """
+    Запись обращения в БД, отправка получателю
+    :param message: Сообщение от пользователя - текст обращения
+    :param recipient_info: Информация о получателе обращения
+    :return: None
+    """
     text = message.text.strip() if message.text else ""
     sender_id = message.from_user.id
     sender_name = message.from_user.first_name or ""
@@ -469,6 +569,11 @@ def send_address(message, recipient_info):
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('reply_'))
 def start_staff_reply(call):
+    """
+    Запрос ответа на обращение от сотрудника
+    :param call: вызов функции с требованием ответа на обращение
+    :return: None
+    """
     _, user_id, message_id = call.data.split('_')
     active_dialogs[call.from_user.id] = (int(user_id), int(message_id))
 
@@ -481,6 +586,11 @@ def start_staff_reply(call):
 
 @bot.message_handler(func=lambda m: m.reply_to_message and m.reply_to_message.text == "✍️ Введите ваш ответ:")
 def process_staff_reply(message):
+    """
+    Запись ответа в БД. Отправка ответа пользователю
+    :param message: Сообщение от сотрудника - ответ на обращение
+    :return: None
+    """
     staff_id = message.from_user.id
     if staff_id not in active_dialogs:
         return
@@ -516,6 +626,14 @@ def process_staff_reply(message):
 
 
 def notifications():
+    """
+    Оработчик напоминаний
+    1. Уведомление о начале сбора показаний (для всех)
+    2. Напоминание во время сбора показаний (для тех, кто не еще не передал)
+    3. Уведомление о завершении сбора (для тех, кто не передал)
+        3.1. Отправка отчета бухгалтеру
+    :return: None
+    """
     while True:
         now = datetime.now()
         current_month = f"{now.month}.{now.year}"
@@ -561,6 +679,10 @@ def notifications():
 
 
 def init_db():
+    """
+    Инициализация БД при запуске бота
+    :return: None
+    """
     create_table('users', [
         "telegram_id INTEGER UNIQUE",
         "apartment INTEGER",
@@ -599,6 +721,10 @@ def init_db():
 
 
 def init_staff():
+    """
+    Заполениние таблицы сотрудников
+    :return: None
+    """
     tablename = 'staff'
     table = select_all(tablename)
     if table:
