@@ -16,11 +16,17 @@ def create_exel_file():
     Создание Exel-таблицы из таблицы meters_data в БД
     :return: None
     """
-    conn = sqlite3.connect('tsg_database.sql')
-    parameters = 'apartment, type_water_meter, type_electricity_meter, cold_water_1,cold_water_2, cold_water_3, hot_water_1, hot_water_2, hot_water_3, electricity_1, electricity_2'
-    df = pd.read_sql_query(f"SELECT {parameters} FROM meters_data", conn)
-    df.to_excel(f"Показания счетчиков {current_month}.xlsx", index=False)
-    conn.close()
+    conn = None
+    try:
+        conn = sqlite3.connect('tsg_database.sql')
+        parameters = 'apartment, type_water_meter, type_electricity_meter, cold_water_1,cold_water_2, cold_water_3, hot_water_1, hot_water_2, hot_water_3, electricity_1, electricity_2'
+        df = pd.read_sql_query(f"SELECT {parameters} FROM meters_data", conn)
+    except Exception as e:
+        print(f'Ошибка в create_exel_file: {e}')
+        raise
+    finally:
+        df.to_excel(f"Показания счетчиков {current_month}.xlsx", index=False)
+        conn.close()
 
 
 def send_table(id):
@@ -30,5 +36,9 @@ def send_table(id):
     :return:
     """
     create_exel_file()
-    with open(f"Показания счетчиков {current_month}.xlsx", "rb") as f:
-        bot.send_document(id, f)
+    try:
+        with open(f"Показания счетчиков {current_month}.xlsx", "rb") as f:
+            bot.send_document(id, f)
+    except Exception as e:
+        bot.send_message(id, "Файл не найден")
+        print(f'Ошибка отправки Exel-файла: {e}')
