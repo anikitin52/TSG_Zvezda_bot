@@ -1,7 +1,10 @@
 from telebot import TeleBot, types
+from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime
 import threading
 import time
+import shutil
+import os
 
 from config import *
 from data.models import User, Appeal
@@ -157,11 +160,21 @@ def export_data(message):
     """
     ACCOUNTANT_ID = find_staff_id('Бухгалтер')
     if message.chat.id != ACCOUNTANT_ID:
-        bot.send_message(message.chat.id, "У вас нет доступа к этой команде")
+        bot.send_message(message.chat.id, "❌ У вас нет доступа к этой команде")
         return
     else:
         logger.info(f'Пользоватлель {message.chat.id} экспортировал Exel-таблицу')
         send_table(message.chat.id)
+
+@bot.message_handler(commands=['backup'])
+def backup(message):
+    admin = find_staff_id('Админ')
+    if message.from_user.id != admin:
+        bot.send_message(message.chat.id, "❌ У вас нет доступа к этой команде")
+        return
+    else:
+        backup_daily()
+        backup_monthly()
 
 
 @bot.message_handler(commands=['account'])
@@ -233,7 +246,8 @@ def enter_auth_code(message):
                           )
             bot.send_message(message.chat.id, f'Вы успешно авторизованы как {staff_post}')
             logger.info(f'Пользоватлеь {message.chat.id} авторизован как {staff_post}')
-            bot.send_message(find_staff_id('Админ'), f"⚠️Пользователь {message.from_user.id}: {message.from_user.first_name} {message.from_user.last_name} авторизован как {staff_post}")
+            bot.send_message(find_staff_id('Админ'),
+                             f"⚠️Пользователь {message.from_user.id}: {message.from_user.first_name} {message.from_user.last_name} авторизован как {staff_post}")
             return
         else:
             continue
@@ -640,6 +654,9 @@ def notifications():
         3.1. Отправка отчета бухгалтеру
     :return: None
     """
+    scheulder = BackgroundScheduler()
+    scheulder.add_job(backup_daily, 'cron', hour=2, minute=0)
+
     while True:
         now = datetime.now()
         current_month = f"{now.month}.{now.year}"
@@ -648,6 +665,8 @@ def notifications():
         if now.day == start_collection[0] and now.hour == start_collection[1] and now.minute == start_collection[2]:
             users = select_all('users')
             logger.info("Открыт сбор показаний счетчиков")
+            if not scheulder.running:
+                scheulder.start()
             for user in users:
                 bot.send_message(user[1], "📬 Открыт сбор показаний счетчиков")
 
@@ -682,8 +701,10 @@ def notifications():
             ACCOUNTANT_ID = find_staff_id('Бухгалтер')
             send_table(ACCOUNTANT_ID)
             logger.info('Таблица отправвлена бухгалтеру')
+            if scheulder.running:
+                scheulder.shutdown()
             clear_table('meters_data')
-            # TODO: Добавить сохранение
+            backup_monthly()
             logger.warning('Таблица показаний очищена')
 
         time.sleep(60)
@@ -746,6 +767,38 @@ def init_staff():
     insert_to_database(tablename, columns, ['Бухгалтер', ACCOUNTANT_CODE])
     insert_to_database(tablename, columns, ['Сантехник', PLUMBER_CODE])
     insert_to_database(tablename, columns, ['Электрик', ELECTRIC_CODE])
+
+
+def backup_daily(db_path="tsg_database.sql", backup_dir="backups/daily"):
+    """
+    Создаёт ежедневную резервную копию базы данных.
+    Старый бэкап удаляется, создаётся новый.
+    """
+    os.makedirs(backup_dir, exist_ok=True)
+    backup_path = os.path.join(backup_dir, "backup_daily.sql")
+
+    # Удалить старый бэкап, если есть
+    if os.path.exists(backup_path):
+        os.remove(backup_path)
+
+    shutil.copy2(db_path, backup_path)
+    logger.info(f"[✓] Ежедневная резервная копия создана: {backup_path}")
+
+
+def backup_monthly(db_path="tsg_database.sql", backup_dir="backups/monthly"):
+    """
+    Создаёт ежемесячную резервную копию базы данных.
+    Хранится отдельно, не перезаписывается.
+    """
+    os.makedirs(backup_dir, exist_ok=True)
+    month_str = datetime.now().strftime("%Y-%m")  # Используем уже импортированный datetime
+    backup_path = os.path.join(backup_dir, f"backup_{month_str}.sql")
+
+    if not os.path.exists(backup_path):
+        shutil.copy2(db_path, backup_path)
+        logger.info(f"[✓] Ежемесячная резервная копия создана: {backup_path}")
+    else:
+        logger.info(f"[!] Ежемесячная копия уже существует: {backup_path}")
 
 
 # Запуск

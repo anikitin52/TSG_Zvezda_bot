@@ -1,5 +1,6 @@
 import sqlite3
-from datetime import datetime
+
+
 from services.logger import logger
 
 db = 'tsg_database.sql'
