@@ -2,7 +2,6 @@ from telebot import TeleBot
 import pandas as pd
 import sqlite3
 from datetime import datetime
-import openpyxl
 from services.logger import logger
 
 from config import BOT_TOKEN

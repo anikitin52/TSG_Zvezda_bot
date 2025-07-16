@@ -783,6 +783,7 @@ def backup_daily(db_path="tsg_database.sql", backup_dir="backups/daily"):
 
     shutil.copy2(db_path, backup_path)
     logger.info(f"[✓] Ежедневная резервная копия создана: {backup_path}")
+    bot.send_message(find_staff_id('Админ'), "Резервная копия создана (день)")
 
 
 def backup_monthly(db_path="tsg_database.sql", backup_dir="backups/monthly"):
@@ -797,8 +798,10 @@ def backup_monthly(db_path="tsg_database.sql", backup_dir="backups/monthly"):
     if not os.path.exists(backup_path):
         shutil.copy2(db_path, backup_path)
         logger.info(f"[✓] Ежемесячная резервная копия создана: {backup_path}")
+        bot.send_message(find_staff_id('Админ'), "Резервная копия создана (месяц)")
     else:
         logger.info(f"[!] Ежемесячная копия уже существует: {backup_path}")
+        bot.send_message(find_staff_id('Админ'), "Ежемесячная копия уже существует")
 
 
 # Запуск
