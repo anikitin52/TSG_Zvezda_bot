@@ -176,6 +176,43 @@ def backup(message):
         backup_daily()
         backup_monthly()
 
+@bot.message_handler(commands=['info'])
+def info(message):
+    """
+    Выводит информацию о доступных польщователю командах
+    :param message: Сообщение от пользователя - команда /info
+    :return: None
+    """
+    result = "Список доступных вам команд: \n"
+    user_status = 'user'
+    result += '''
+    /send - Передать показания счетчиков \n
+    /manager - Отправить обращение к председателю \n
+    /accountant - Отправить обращение к бухгалтеру \n
+    /electric - Подать заявки на работу электрика \n
+    /plumber - Подать заявки на работу сантехника \n
+    /account - Переход в профиль квартиры \n
+    '''
+    staff_id = [
+        find_staff_id('Админ'),
+        find_staff_id('Председатель'),
+        find_staff_id('Бухгалтер')
+    ]
+    for id in staff_id:
+        if message.from_user.id == id:
+            user_status = 'staff'
+
+    if user_status == 'staff':
+        result += "Специальные команды, доступныке вам \n"
+        if message.from_user.id == staff_id[0]:
+            result += "/backup - Сохранить резервную копию базы данных \n"
+        if message.from_user.id == staff_id[1]:
+            pass
+        if message.from_user.id == staff_id[2]:
+            result += '/export - Получить Exel-таблицу с показаниями счетчиков \n'
+
+    bot.send_message(message.chat.id, result)
+
 
 @bot.message_handler(commands=['account'])
 def account(message):
