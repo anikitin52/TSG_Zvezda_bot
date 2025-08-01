@@ -191,8 +191,6 @@ def info(message):
     /send - Передать показания счетчиков \n
     /manager - Отправить обращение к председателю \n
     /accountant - Отправить обращение к бухгалтеру \n
-    /electric - Подать заявки на работу электрика \n
-    /plumber - Подать заявки на работу сантехника \n
     /account - Переход в профиль квартиры \n
     '''
     staff_id = [
@@ -862,5 +860,7 @@ if __name__ == '__main__':
     init_staff()
     now = datetime.now()
     logger.info('Бот запущен')
+    print("Бот запущен")
+    print("Бот запущен")
     threading.Thread(target=notifications, daemon=True).start()
     bot.polling(none_stop=True)
