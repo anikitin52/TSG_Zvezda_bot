@@ -237,7 +237,7 @@ def account(message):
     result = find_user_by_id('users', telegram_id, 'apartment, water_count, electricity_count')
     if result:
         apartment, water_count, electricity_type = result
-        rate = "Однотарифный" if electricity_type == "one_rate" else "Двухтарифный"
+        rate = "Однотарифный" if electricity_type == "1" else "Двухтарифный"
         bot.send_message(
             message.chat.id,
             f"🏠 Ваш профиль:\nКвартира: {apartment}\n"
