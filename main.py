@@ -628,7 +628,6 @@ def send_address(message, recipient_info):
             f'🏠 Квартира: {apartment}\n\n'
             f'_{text}_',
             parse_mode="Markdown",
-            reply_markup=markup
         )
 
     logger.info(f"Отправлено обращение от пользователя{sender_id}. Получатель {recipient_info['recipient']}")
