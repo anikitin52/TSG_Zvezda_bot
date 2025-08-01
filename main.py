@@ -166,6 +166,7 @@ def export_data(message):
         logger.info(f'Пользоватлель {message.chat.id} экспортировал Exel-таблицу')
         send_table(message.chat.id)
 
+
 @bot.message_handler(commands=['backup'])
 def backup(message):
     admin = find_staff_id('Админ')
@@ -175,6 +176,7 @@ def backup(message):
     else:
         backup_daily()
         backup_monthly()
+
 
 @bot.message_handler(commands=['info'])
 def info(message):
@@ -615,6 +617,20 @@ def send_address(message, recipient_info):
         parse_mode="Markdown",
         reply_markup=markup
     )
+
+    # Отправка председателю
+    if recipient_info['id'] != find_staff_id('Председатель'):
+        bot.send_message(
+            find_staff_id('Председатель'),
+            f'📨 Обращение от жителя:\n'
+            f'‍💻Получатель: {recipient_info["recipient"]}'
+            f'👤 [{sender_name} {sender_surname}](tg://user?id={sender_id})\n'
+            f'🏠 Квартира: {apartment}\n\n'
+            f'_{text}_',
+            parse_mode="Markdown",
+            reply_markup=markup
+        )
+
     logger.info(f"Отправлено обращение от пользователя{sender_id}. Получатель {recipient_info['recipient']}")
 
     # Отправляем подтверждение пользователю
