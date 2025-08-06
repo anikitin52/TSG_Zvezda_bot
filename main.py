@@ -10,7 +10,7 @@ from config import *
 from data.models import User, Appeal
 from services.utils import *
 from data.data import *
-from services.exel_export import send_table
+from services.exel_export import send_table, send_appeals_table
 from data.database import *
 from services.logger import logger
 
@@ -163,9 +163,18 @@ def export_data(message):
         bot.send_message(message.chat.id, "❌ У вас нет доступа к этой команде")
         return
     else:
-        logger.info(f'Пользоватлель {message.chat.id} экспортировал Exel-таблицу')
+        logger.info(f'Пользоватлель {message.chat.id} экспортировал Exel-таблицу с показаниями счетчтков')
         send_table(message.chat.id)
 
+@bot.message_handler(commands=['appeals'])
+def send_appeals(message):
+    MANAGER_ID = find_staff_id('Председатель')
+    if message.chat.id != MANAGER_ID:
+        bot.send_message(message.chat.id, "❌ У вас нет доступа к этой команде")
+        return
+    else:
+        logger.info(f'Пользоватлель {message.chat.id} экспортировал Exel-таблицу с обращениями')
+        send_appeals_table(message.chat.id)
 
 @bot.message_handler(commands=['backup'])
 def backup(message):
@@ -860,7 +869,6 @@ if __name__ == '__main__':
     init_staff()
     now = datetime.now()
     logger.info('Бот запущен')
-    print("Бот запущен")
     print("Бот запущен")
     threading.Thread(target=notifications, daemon=True).start()
     bot.polling(none_stop=True)

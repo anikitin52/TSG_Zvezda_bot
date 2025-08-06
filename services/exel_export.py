@@ -55,3 +55,36 @@ def send_table(id):
     except Exception as e:
         bot.send_message(id, "Файл не найден")
         logger.error(f'Ошибка отправки Exel-файла: {e}')
+
+
+def send_appeals_table(id):
+    conn = None
+    df = None
+    try:
+        conn = sqlite3.connect('tsg_database.sql')
+        parameters = 'apartment, message_text, recipient_post, status, answer_text'
+        df = pd.read_sql_query(f"SELECT {parameters} FROM appeals", conn)
+        df.rename(columns={
+            'apartment': 'Квартира',
+            'message_text': 'Текст обращения',
+            'recipient_post': 'Получатель',
+            'status': 'Статус',
+            'answer_text': 'Текст ответа',
+        }, inplace=True)
+
+
+        df.to_excel(f"Обращения.xlsx", index=False)
+    except Exception as e:
+        logger.error(f'Ошибка создания Exel-файла: {e}')
+        raise
+    finally:
+        if conn:
+            conn.close()
+
+    if df is not None:
+        try:
+            with open(f"Обращения.xlsx", "rb") as f:
+                bot.send_document(id, f)
+        except Exception as e:
+            bot.send_message(id, "Файл не найден")
+            logger.error(f'Ошибка отправки Exel-файла: {e}')
