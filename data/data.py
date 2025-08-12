@@ -2,7 +2,10 @@ temp_users = {}  # временное хранилище User объектов, 
 current_editing = {}  # telegram_id -> текущий редактируемый счетчик
 user_data = {}  # Временное хранилище данных пользователя во время регистрации
 current_meters = {} # telegram_id -> словарь введенных показаний (название счетчика -> значение)
-active_dialogs = {}  # {staff_id: (user_id, message_id)}
+active_dialogs = {}  # {staff_id: (user_id, message_id, appeal_count)}
+with open('count.txt', 'r') as file:
+    appeals_count = int(file.read())  # Читаем и преобразуем в целое число
+
 
 # Списки счетчиков
 cold_water_meters = {

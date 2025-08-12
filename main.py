@@ -18,6 +18,7 @@ bot = TeleBot(BOT_TOKEN)
 now = datetime.now()
 
 
+
 @bot.message_handler(commands=['start'])  # Запуск бота
 def start(message):
     """
@@ -549,28 +550,32 @@ def handle_address_request(message):
             'request_text': "✉️ Напишите своё обращение к председателю ТСЖ",
             'recipient': "Председатель",
             'message_type': 'Обращение председателю',
-            'response_success': "✅ Обращение успешно отправлено председателю"
+            'response_success': "✅ Обращение успешно отправлено председателю",
+            'answer_text': 'Ответ председателя ТСЖ на ваше обращение'
         },
         '/accountant': {
             'id': ACCOUNTANT_ID,
             'request_text': "✉️ Напишите своё обращение к бухгалтеру",
             'recipient': "Бухгалтер",
             'message_type': 'Обращение бухгалтеру',
-            'response_success': "✅ Обращение успешно отправлено бухгалтеру"
+            'response_success': "✅ Обращение успешно отправлено бухгалтеру",
+            'answer_text': 'Ответ бухгалтера на ваше обращение'
         },
         '/electric': {
             'id': ELECTRIC_ID,
             'request_text': "✉️ Напишите текст заявки на работу электрика",
             'recipient': "Электрик",
             'message_type': 'Заявка на работу слектрика',
-            'response_success': "✅ Заявка на работу электрика успешно отправлена"
+            'response_success': "✅ Заявка на работу электрика успешно отправлена",
+            'answer_text': 'Ответ электрика на ваше обращение'
         },
         '/plumber': {
             'id': PLUMBER_ID,
             'request_text': "✉️ Напишите текст заявки на работу сантехника",
             'recipient': "Сантехник",
             'message_type': 'Заявка на работу сантехника',
-            'response_success': "✅ Заявка на работу сантехника успешно отправлена"
+            'response_success': "✅ Заявка на работу сантехника успешно отправлена",
+            'answer_text': 'Ответ сантехника на ваше обращение'
         }
     }
 
@@ -585,6 +590,7 @@ def send_address(message, recipient_info):
     :param recipient_info: Информация о получателе обращения
     :return: None
     """
+    global appeals_count
     text = message.text.strip() if message.text else ""
     sender_id = message.from_user.id
     sender_name = message.from_user.first_name or ""
@@ -595,12 +601,14 @@ def send_address(message, recipient_info):
     apartment = result[0] if result else "Неизвестна"
 
     ap = Appeal(
-        sender_id=message.from_user.id,
+        sender_id=sender_id,
         apartment=apartment,
         message_text=text,
         recirient_post=recipient_info['recipient']
     )
-
+    appeals_count += 1
+    with open('count.txt', 'w') as file:
+        file.write(str(appeals_count))  # Записываем как строку
     # Сохраняем обращение в базу данных
     insert_to_database('appeals',
                        ['sender_id', 'apartment', 'message_text', 'recipient_post'],
@@ -653,8 +661,11 @@ def start_staff_reply(call):
     :param call: вызов функции с требованием ответа на обращение
     :return: None
     """
+
     _, user_id, message_id = call.data.split('_')
-    active_dialogs[call.from_user.id] = (int(user_id), int(message_id))
+    active_dialogs[call.from_user.id] = (int(user_id), int(message_id), appeals_count)
+
+
 
     bot.send_message(
         call.from_user.id,
@@ -679,7 +690,7 @@ def process_staff_reply(message):
     PLUMBER_ID = find_staff_id('Сантехник')
     ELECTRIC_ID = find_staff_id('Электрик')
 
-    user_id, original_message_id = active_dialogs[staff_id]
+    user_id, original_message_id, appeal_id = active_dialogs[staff_id]
     if staff_id == MANAGER_ID:
         staff_position = "председателя ТСЖ"
     elif staff_id == ACCOUNTANT_ID:
@@ -695,10 +706,7 @@ def process_staff_reply(message):
     bot.send_message(user_id, f"📩 Ответ {staff_position} на ваше обращение:\n\n{message.text}")
 
     # Обновляем статус в БД
-    update_values('appeals',
-                  {'status': 'closed', 'answer_text': message.text},
-                  {'sender_id': user_id, 'status': 'open'}
-                  )
+    update_appeal_status(message.text, active_dialogs[staff_id][2])
     logger.info(f'Ответ {staff_position} на обращение')
     bot.send_message(staff_id, "✅ Ответ отправлен")
     del active_dialogs[staff_id]

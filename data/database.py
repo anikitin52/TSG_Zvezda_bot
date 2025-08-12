@@ -219,6 +219,48 @@ def update_values(table_name, set_values, where_conditions):
             conn.close()
 
 
+def update_appeal_status(answer_text, appeal_id):
+    cur = None
+    conn = None
+    try:
+        conn = sqlite3.connect(db)
+        cur = conn.cursor()
+
+        cur.execute('UPDATE appeals SET status = ?, answer_text = ? WHERE id = ?',
+                    ('closed', answer_text, appeal_id))
+        conn.commit()
+
+    except Exception as e:
+        logger.error(f"Ошибка в функции update_appeal_status: {e}")
+        raise
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+def check_appeal_status(appeal_id):
+    cur = None
+    conn = None
+    try:
+        conn = sqlite3.connect(db)
+        cur = conn.cursor()
+
+        cur.execute('SELECT * FROM appeals WHERE id = ?', appeal_id)
+        result = cur.fetchone()
+
+    except Exception as e:
+        logger.error(f"Ошибка в функции update_appeal_status: {e}")
+        raise
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+    return result[6] if result else None
+
+
 def find_staff_id(role, table_name='staff'):
     """
     Поиск сотрудника по id
