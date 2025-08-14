@@ -17,7 +17,7 @@ env/
 pip-selfcheck.json
 Pipfile*
 poetry.lock
-requirements.txt
+
 
 ### Данные ###
 # Базы данных и Excel-файлы
