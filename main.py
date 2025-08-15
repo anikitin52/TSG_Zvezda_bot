@@ -18,15 +18,13 @@ bot = TeleBot(BOT_TOKEN)
 now = datetime.now()
 
 
-
-@bot.message_handler(commands=['start'])  # Запуск бота
+@bot.message_handler(commands=['start'])
 def start(message):
     """
     Обработка команды /start -> Запуск бота. Начало регистрации пользователя.
     :param message: Сообщение от пользователя - Команда /start
     :return: None
     """
-
     tablename = 'users'
     user_id = message.from_user.id
 
@@ -36,12 +34,28 @@ def start(message):
         apartment = user[2]
         bot.send_message(message.chat.id, f"✅ Вы уже зарегистрированы! Квартира: {apartment}")
     else:
-        # Пользователь не найден. Начинаем регистрацию
+        # Запрашиваем пароль у нового пользователя
+        msg = bot.send_message(message.chat.id, '🔒 Для начала работы с ботом введите пароль доступа:')
+        bot.register_next_step_handler(msg, check_password)
+
+def check_password(message):
+    """
+    Проверка введенного пароля
+    :param message: Сообщение с введенным паролем
+    :return: None
+    """
+    if message.text.strip() == PASSWORD:
+        # Пароль верный, предлагаем зарегистрироваться
         markup = types.InlineKeyboardMarkup()
         markup.add(types.InlineKeyboardButton("Зарегистрироваться", callback_data='register'))
         bot.send_message(message.chat.id, "👋 Добро пожаловать! Для начала зарегистрируйтесь:", reply_markup=markup)
-        logger.info(f'Пользователь {message.from_user.id} запустил бота')
-
+        logger.info(f'Пользователь {message.from_user.id} ввел верный пароль')
+    else:
+        # Пароль неверный
+        msg = bot.send_message(message.chat.id, "❌ Неверный пароль")
+        bot.register_next_step_handler(msg, add_apartment_number)
+        logger.info(f'Пользователь {message.from_user.id} ввел неверный пароль')
+        return
 
 @bot.callback_query_handler(func=lambda call: call.data == 'register')
 def add_apartment_number(call):
