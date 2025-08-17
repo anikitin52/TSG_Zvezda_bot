@@ -552,9 +552,10 @@ def handle_address_request(message):
     :param message: Сообщение от польщователя - команда, соотвествующая получателю обращения
     :return: None
     """
-    user_id = message.from_user.id
-    if find_user_by_id('users', user_id) == None:
-        bot.send_message(message.chat.id, "Вы не зарегистрированы. Чтобы зарегистрироваться, введте /start")
+
+    # Проверка регистрации пользователя
+    if find_user_by_id('users', message.from_useer.id) is None:
+        bot.send_message(message.chat.id, "Вы не зарегистрированы. Чтобы начать работу введите /start")
         return
 
     # Определяем тип получателя и текст запроса
@@ -609,6 +610,7 @@ def send_address(message, recipient_info):
     :param recipient_info: Информация о получателе обращения
     :return: None
     """
+    global appeals_count
     text = message.text.strip() if message.text else ""
     sender_id = message.from_user.id
     sender_name = message.from_user.first_name or ""
@@ -624,6 +626,9 @@ def send_address(message, recipient_info):
         message_text=text,
         recirient_post=recipient_info['recipient']
     )
+    appeals_count += 1
+    with open('count.txt', 'w') as file:
+        file.write(str(appeals_count))  # Записываем как строку
     # Сохраняем обращение в базу данных
     insert_to_database('appeals',
                        ['sender_id', 'apartment', 'message_text', 'recipient_post'],
