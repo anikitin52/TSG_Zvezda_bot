@@ -1160,8 +1160,28 @@ def backup_monthly(db_path="tsg_database.sql", backup_dir="backups/monthly"):
 if __name__ == '__main__':
     init_db()
     init_staff()
-    now = datetime.now()
     logger.info('Бот запущен')
     print("Бот запущен")
+
+    # Запускаем фоновые задачи в демон-потоке
     threading.Thread(target=notifications, daemon=True).start()
-    bot.polling(none_stop=True)
+
+    # Основной цикл работы бота с защитой
+    while True:
+        try:
+            logger.info("Запуск polling...")
+            bot.polling(none_stop=True, timeout=30)
+
+        except ConnectionError as e:
+            logger.error(f"Ошибка соединения: {e}. Перезапуск через 10 секунд...")
+            print(f"Ошибка соединения: {e}. Перезапуск через 10 секунд...")
+            time.sleep(10)
+
+        except Exception as e:
+            logger.error(f"Критическая ошибка: {e}. Перезапуск через 30 секунд...")
+            print(f"Критическая ошибка: {e}. Перезапуск через 30 секунд...")
+            time.sleep(30)
+
+        finally:
+            logger.info("Очистка ресурсов перед перезапуском...")
+            # Дополнительные действия по очистке при необходимости
