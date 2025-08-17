@@ -31,7 +31,7 @@ def start(message):
     # Проверяем наличие пользователя
     user = find_user_by_id(tablename, user_id)
     if user:
-        apartment = user[2]
+        apartment = user[3]
         bot.send_message(message.chat.id, f"✅ Вы уже зарегистрированы! Квартира: {apartment}")
     else:
         # Запрашиваем пароль у нового пользователя
@@ -263,7 +263,8 @@ def account(message):
             types.InlineKeyboardButton("✏️ Изменить ФИО", callback_data=f'edit_name_{telegram_id}'),
             types.InlineKeyboardButton("🏠 Изменить квартиру", callback_data=f'edit_apartment_{telegram_id}'),
             types.InlineKeyboardButton("💧 Изменить счетчики воды", callback_data=f'edit_water_{telegram_id}'),
-            types.InlineKeyboardButton("⚡ Изменить электросчетчик", callback_data=f'edit_electric_{telegram_id}')
+            types.InlineKeyboardButton("⚡ Изменить электросчетчик", callback_data=f'edit_electric_{telegram_id}'),
+            types.InlineKeyboardButton("❌ Удалить аккаунт", callback_data=f'delete_account_{telegram_id}')
         )
 
         bot.send_message(
@@ -277,10 +278,190 @@ def account(message):
         bot.send_message(message.chat.id, "❌ Ошибка при получении данных профиля")
 
 
-def process_edit_choice(message):
-    """Обработка выбора изменения"""
-    # Реализуйте логику изменения данных
-    pass
+# Обработчики для каждой кнопки
+@bot.callback_query_handler(func=lambda call: call.data.startswith('edit_name_'))
+def edit_name(call):
+    """Обработка кнопки изменения ФИО"""
+    telegram_id = int(call.data.split('_')[2])
+    if call.from_user.id != telegram_id:
+        bot.answer_callback_query(call.id, "❌ Недостаточно прав", show_alert=True)
+        return
+
+    bot.answer_callback_query(call.id)
+    msg = bot.send_message(call.message.chat.id, "Введите новое ФИО:")
+    bot.register_next_step_handler(msg, process_new_name, telegram_id)
+
+
+def process_new_name(message, telegram_id):
+    """Обработка нового ФИО"""
+    if validate_russian_name(message.text):
+        update_values('users', {'name': message.text.strip()}, {'telegram_id': telegram_id})
+        bot.send_message(message.chat.id, "✅ ФИО успешно изменено")
+    else:
+        msg = bot.send_message(message.chat.id, "❌ Неверный формат ФИО")
+        bot.register_next_step_handler(msg, process_new_name, telegram_id)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('edit_apartment_'))
+def edit_apartment(call):
+    """Обработка кнопки изменения квартиры"""
+    telegram_id = int(call.data.split('_')[2])
+    if call.from_user.id != telegram_id:
+        bot.answer_callback_query(call.id, "❌ Недостаточно прав", show_alert=True)
+        return
+
+    bot.answer_callback_query(call.id)
+    msg = bot.send_message(call.message.chat.id, "Введите новый номер квартиры (1-150):")
+    bot.register_next_step_handler(msg, process_new_apartment, telegram_id)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('edit_water_'))
+def edit_water(call):
+    """Обработка кнопки изменения счетчиков воды"""
+    telegram_id = int(call.data.split('_')[2])
+    if call.from_user.id != telegram_id:
+        bot.answer_callback_query(call.id, "❌ Недостаточно прав", show_alert=True)
+        return
+
+    bot.answer_callback_query(call.id)
+    msg = bot.send_message(
+        call.message.chat.id,
+        "Введите новое количество счетчиков холодной воды (1-3):\n"
+    )
+    bot.register_next_step_handler(msg, process_new_water, telegram_id)
+
+
+def process_new_water(message, telegram_id):
+    """Обработка нового количества счетчиков воды"""
+    try:
+        water_count = int(message.text)
+        if 1 <= water_count <= 3:
+            update_values('users', {'water_count': water_count}, {'telegram_id': telegram_id})
+            bot.send_message(message.chat.id, f"✅ Количество счетчиков воды изменено")
+        else:
+            msg = bot.send_message(message.chat.id, "❌ Введите число от 1 до 3")
+            bot.register_next_step_handler(msg, process_new_water, telegram_id)
+    except ValueError:
+        msg = bot.send_message(message.chat.id, "❌ Введите число от 1 до 3")
+        bot.register_next_step_handler(msg, process_new_water, telegram_id)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('edit_electric_'))
+def edit_electric(call):
+    """Обработка кнопки изменения типа электросчетчика"""
+    telegram_id = int(call.data.split('_')[2])
+    if call.from_user.id != telegram_id:
+        bot.answer_callback_query(call.id, "❌ Недостаточно прав", show_alert=True)
+        return
+
+    markup = types.InlineKeyboardMarkup()
+    markup.row(
+        types.InlineKeyboardButton('Однотарифный', callback_data=f'confirm_elec_1_{telegram_id}'),
+        types.InlineKeyboardButton('Двухтарифный', callback_data=f'confirm_elec_2_{telegram_id}')
+    )
+
+    bot.answer_callback_query(call.id)
+    bot.send_message(
+        call.message.chat.id,
+        "Выберите тип счетчика электричества:",
+        reply_markup=markup
+    )
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('confirm_elec_'))
+def confirm_electric(call):
+    """Подтверждение изменения типа электросчетчика"""
+    parts = call.data.split('_')
+    elec_type = int(parts[2])
+    telegram_id = int(parts[3])
+
+    if call.from_user.id != telegram_id:
+        bot.answer_callback_query(call.id, "❌ Недостаточно прав", show_alert=True)
+        return
+
+    try:
+        update_values('users', {'electricity_count': elec_type}, {'telegram_id': telegram_id})
+        bot.answer_callback_query(call.id)
+        bot.send_message(
+            call.message.chat.id,
+            f"✅ Тип электросчетчика изменен на {'однотарифный' if elec_type == 1 else 'двухтарифный'}"
+        )
+    except Exception as e:
+        logger.error(f"Ошибка при изменении электросчетчика: {e}")
+        bot.answer_callback_query(call.id, "❌ Ошибка при изменении", show_alert=True)
+
+def process_new_apartment(message, telegram_id):
+    """Обработка нового номера квартиры"""
+    try:
+        apartment = int(message.text)
+        if 1 <= apartment <= 150:
+            update_values('users', {'apartment': apartment}, {'telegram_id': telegram_id})
+            bot.send_message(message.chat.id, "✅ Номер квартиры изменен")
+        else:
+            msg = bot.send_message(message.chat.id, "❌ Номер должен быть от 1 до 150")
+            bot.register_next_step_handler(msg, process_new_apartment, telegram_id)
+    except ValueError:
+        msg = bot.send_message(message.chat.id, "❌ Введите число")
+        bot.register_next_step_handler(msg, process_new_apartment, telegram_id)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('delete_account_'))
+def delete_account_confirmation(call):
+    """Подтверждение удаления аккаунта"""
+    telegram_id = int(call.data.split('_')[2])
+    if call.from_user.id != telegram_id:
+        bot.answer_callback_query(call.id, "❌ Недостаточно прав", show_alert=True)
+        return
+
+    # Создаем клавиатуру подтверждения
+    markup = types.InlineKeyboardMarkup()
+    markup.row(
+        types.InlineKeyboardButton("✅ Да, удалить", callback_data=f'confirm_delete_{telegram_id}'),
+        types.InlineKeyboardButton("❌ Нет, отменить", callback_data=f'cancel_delete_{telegram_id}')
+    )
+
+    bot.answer_callback_query(call.id)
+    bot.send_message(
+        call.message.chat.id,
+        "⚠️ Вы уверены, что хотите удалить свой аккаунт?\n"
+        "Все ваши данные будут безвозвратно удалены!",
+        reply_markup=markup
+    )
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('confirm_delete_'))
+def delete_account(call):
+    """Окончательное удаление аккаунта"""
+    telegram_id = int(call.data.split('_')[2])
+    if call.from_user.id != telegram_id:
+        bot.answer_callback_query(call.id, "❌ Недостаточно прав", show_alert=True)
+        return
+
+    try:
+        # Удаляем из всех таблиц
+        delete_from_database('users', {'telegram_id': telegram_id})
+        delete_from_database('meters_data', {'telegram_id': telegram_id})
+        delete_from_database('appeals', {'sender_id': telegram_id})
+
+        bot.answer_callback_query(call.id, "✅ Аккаунт удален", show_alert=True)
+        bot.send_message(
+            call.message.chat.id,
+            "❌ Ваш аккаунт был удален. Для новой регистрации нажмите /start"
+        )
+        logger.info(f"Пользователь {telegram_id} удалил аккаунт")
+
+    except Exception as e:
+        logger.error(f"Ошибка при удалении аккаунта {telegram_id}: {e}")
+        bot.answer_callback_query(call.id, "❌ Ошибка при удалении", show_alert=True)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('cancel_delete_'))
+def cancel_delete(call):
+    """Отмена удаления аккаунта"""
+    telegram_id = int(call.data.split('_')[2])
+    bot.answer_callback_query(call.id, "❎ Удаление отменено")
+    bot.send_message(call.message.chat.id, "Удаление аккаунта отменено")
+
 
 @bot.message_handler(commands=['auth'])
 def auth(message):

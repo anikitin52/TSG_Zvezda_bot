@@ -76,6 +76,21 @@ def insert_to_database(tablename, columns, values):
             conn.close()
 
 
+def delete_from_database(table_name, conditions):
+    """
+    Удаление записи из базы данных
+    :param table_name: имя таблицы
+    :param conditions: словарь условий {поле: значение}
+    """
+    where_clause = " AND ".join([f"{k} = ?" for k in conditions.keys()])
+    values = tuple(conditions.values())
+
+    with sqlite3.connect(db) as conn:
+        cursor = conn.cursor()
+        cursor.execute(f"DELETE FROM {table_name} WHERE {where_clause}", values)
+        conn.commit()
+
+
 def find_user_by_id(table_name, user_id, parameter='*'):
     """
     Поиск пользователя по id в заданной таблице
