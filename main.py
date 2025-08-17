@@ -822,8 +822,6 @@ def send_address(message, recipient_info):
     global appeals_count
     text = message.text.strip() if message.text else ""
     sender_id = message.from_user.id
-    sender_name = message.from_user.first_name or ""
-    sender_surname = message.from_user.last_name or ""
 
     # Получаем номер квартиры из базы данных
     result = find_user_by_id("users", sender_id, "apartment")
@@ -851,11 +849,15 @@ def send_address(message, recipient_info):
         callback_data=f"reply_{sender_id}_{message.message_id}"
     ))
 
+    data = find_user_by_id('users', sender_id, 'name, apartment')
+    user_name = data[0]
+    apartment = data[1]
+
     # Формируем и отправляем сообщение
     bot.send_message(
         recipient_info['id'],
         f'📨 Обращение от жителя:\n'
-        f'👤 [{sender_name} {sender_surname}](tg://user?id={sender_id})\n'
+        f'👤 [{user_name}](tg://user?id={sender_id})\n'
         f'🏠 Квартира: {apartment}\n\n'
         f'_{text}_',
         parse_mode="Markdown",
@@ -868,7 +870,7 @@ def send_address(message, recipient_info):
             find_staff_id('Председатель'),
             f'📨 Обращение от жителя:\n'
             f'‍💻 Получатель: {recipient_info["recipient"]}'
-            f'👤 Отправитель: [{sender_name} {sender_surname}](tg://user?id={sender_id})\n'
+            f'👤 Отправитель: [{user_name}](tg://user?id={sender_id})\n'
             f'🏠 Квартира: {apartment}\n\n'
             f'_{text}_',
             parse_mode="Markdown",
@@ -931,6 +933,22 @@ def process_staff_reply(message):
 
     # Отправляем ответ пользователю
     bot.send_message(user_id, f"📩 Ответ {staff_position} на ваше обращение:\n\n{message.text}")
+
+    data = find_user_by_id('users', user_id, 'name, apartment')
+    user_name = data[0]
+    apartment = data[1]
+
+    # Отправляем копию ответа председателю
+    if staff_id != MANAGER_ID:
+        bot.send_message(
+            find_staff_id('Председатель'),
+            f'📩 Ответ {staff_position}:\n'
+            f'‍💻 Получатель: {user_name}\n'
+            f'🏠 Квартира: {apartment}\n\n'
+            f'_{message.text}_',
+            parse_mode="Markdown",
+        )
+
 
     # Обновляем статус в БД
     update_appeal_status(message.text, active_dialogs[staff_id][2])
