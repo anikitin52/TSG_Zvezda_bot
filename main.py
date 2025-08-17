@@ -51,6 +51,11 @@ def check_password(message):
         msg = bot.send_message(message.chat.id, "Введите ФИО")
         bot.register_next_step_handler(msg, check_name)
         logger.info(f'Пользователь {message.from_user.id} ввел верный пароль')
+
+    if message.text.strip().lower() == '/cancel':
+        bot.send_message(message.chat.id, "❌ Действие отменено")
+        return
+
     else:
         # Пароль неверный - запрашиваем снова
         msg = bot.send_message(message.chat.id, "❌ Неверный пароль. Попробуйте еще раз:")
@@ -68,12 +73,21 @@ def check_name(message):
 
         msg = bot.send_message(message.chat.id, "Введите номер вашей квартиры (от 1 до 150)")
         bot.register_next_step_handler(msg, check_apartment_number)
+
+    if message.text.strip().lower() == '/cancel':
+        bot.send_message(message.chat.id, "❌ Действие отменено")
+        return
+
     else:
         msg = bot.send_message(message.chat.id, "❌ Неверный формат ФИО. Введите в формате: Иванов Иван Иванович")
         bot.register_next_step_handler(msg, check_name)
 
 
 def check_apartment_number(message):
+    if message.text.strip().lower() == '/cancel':
+        bot.send_message(message.chat.id, "❌ Действие отменено")
+        return
+
     try:
         apartment = int(message.text.strip())
         if not 1 <= apartment <= 150:
@@ -100,6 +114,9 @@ def check_apartment_number(message):
 
 
 def check_water_meters(message):
+    if message.text.strip().lower() == '/cancel':
+        bot.send_message(message.chat.id, "❌ Действие отменено")
+        return
     try:
         water_meters = int(message.text.strip())
         if not 1 <= water_meters <= 3:
@@ -301,6 +318,11 @@ def process_new_name(message, telegram_id):
     if validate_russian_name(message.text):
         update_values('users', {'name': message.text.strip()}, {'telegram_id': telegram_id})
         bot.send_message(message.chat.id, "✅ ФИО успешно изменено")
+
+    if message.text.strip().lower() == '/cancel':
+        bot.send_message(message.chat.id, "❌ Действие отменено")
+        return
+
     else:
         msg = bot.send_message(message.chat.id, "❌ Неверный формат ФИО")
         bot.register_next_step_handler(msg, process_new_name, telegram_id)
@@ -317,6 +339,25 @@ def edit_apartment(call):
     bot.answer_callback_query(call.id)
     msg = bot.send_message(call.message.chat.id, "Введите новый номер квартиры (1-150):")
     bot.register_next_step_handler(msg, process_new_apartment, telegram_id)
+
+
+def process_new_apartment(message, telegram_id):
+    """Обработка нового номера квартиры"""
+    if message.text.strip().lower() == '/cancel':
+        bot.send_message(message.chat.id, "❌ Действие отменено")
+        return
+
+    try:
+        apartment = int(message.text)
+        if 1 <= apartment <= 150:
+            update_values('users', {'apartment': apartment}, {'telegram_id': telegram_id})
+            bot.send_message(message.chat.id, "✅ Номер квартиры изменен")
+        else:
+            msg = bot.send_message(message.chat.id, "❌ Номер должен быть от 1 до 150")
+            bot.register_next_step_handler(msg, process_new_apartment, telegram_id)
+    except ValueError:
+        msg = bot.send_message(message.chat.id, "❌ Введите число")
+        bot.register_next_step_handler(msg, process_new_apartment, telegram_id)
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('edit_water_'))
@@ -337,6 +378,10 @@ def edit_water(call):
 
 def process_new_water(message, telegram_id):
     """Обработка нового количества счетчиков воды"""
+    if message.text.strip().lower() == '/cancel':
+        bot.send_message(message.chat.id, "❌ Действие отменено")
+        return
+
     try:
         water_count = int(message.text)
         if 1 <= water_count <= 3:
@@ -393,21 +438,6 @@ def confirm_electric(call):
     except Exception as e:
         logger.error(f"Ошибка при изменении электросчетчика: {e}")
         bot.answer_callback_query(call.id, "❌ Ошибка при изменении", show_alert=True)
-
-
-def process_new_apartment(message, telegram_id):
-    """Обработка нового номера квартиры"""
-    try:
-        apartment = int(message.text)
-        if 1 <= apartment <= 150:
-            update_values('users', {'apartment': apartment}, {'telegram_id': telegram_id})
-            bot.send_message(message.chat.id, "✅ Номер квартиры изменен")
-        else:
-            msg = bot.send_message(message.chat.id, "❌ Номер должен быть от 1 до 150")
-            bot.register_next_step_handler(msg, process_new_apartment, telegram_id)
-    except ValueError:
-        msg = bot.send_message(message.chat.id, "❌ Введите число")
-        bot.register_next_step_handler(msg, process_new_apartment, telegram_id)
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('delete_account_'))
@@ -485,7 +515,12 @@ def auth(message):
     msg = bot.send_message(message.chat.id, 'Введите код авторизации')
     bot.register_next_step_handler(msg, enter_auth_code)
 
+
 def add_enter_code(message):
+    if message.text.strip().lower() == '/cancel':
+        bot.send_message(message.chat.id, "❌ Действие отменено")
+        return
+
     code = message.text
     if code == PASSWORD:
         msg = bot.send_message(message.chat.id, "Bведите код авторизации")
@@ -494,12 +529,17 @@ def add_enter_code(message):
         msg = bot.send_message(message.chat.id, "❌ Неверный пароль. Попробуйте еще раз:")
         bot.register_next_step_handler(msg, add_enter_code)  # Снова вызываем проверку пароля
 
+
 def enter_auth_code(message):
     """
     Проверка кода авторизации -> атворизация сотруудника
     :param message: Сообщение от пользователя - код авторицации
     :return: None
     """
+    if message.text.strip().lower() == '/cancel':
+        bot.send_message(message.chat.id, "❌ Действие отменено")
+        return
+
     user_id = message.from_user.id
     user_name = f'{message.from_user.first_name or ""} {message.from_user.last_name or ""}'
     auth_code = message.text.strip()
@@ -948,7 +988,6 @@ def process_staff_reply(message):
             f'_{message.text}_',
             parse_mode="Markdown",
         )
-
 
     # Обновляем статус в БД
     update_appeal_status(message.text, active_dialogs[staff_id][2])
