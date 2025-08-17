@@ -207,6 +207,11 @@ def info(message):
     :param message: Сообщение от пользователя - команда /info
     :return: None
     """
+
+    if find_user_by_id('users', message.from_user.id) is None:
+        bot.send_message(message.chat.id, "Вы не зарегистрированы. Чтобы начать работу введите /start")
+        return
+
     result = "Список доступных вам команд: \n"
     user_status = 'user'
     result += '''
@@ -238,39 +243,44 @@ def info(message):
 
 @bot.message_handler(commands=['account'])
 def account(message):
-    """
-    Обработка команды /account -> Вывод данных об акаунте пользователя
-    :param message: Сообщение от ползователя - команда /account
-    :return: None
-    """
-    # Проверка наличия пользователя
+    """Вывод профиля с кнопками редактирования"""
     telegram_id = message.from_user.id
     user_exists = find_user_by_id('users', telegram_id, 'COUNT(*)')[0] > 0
+
     if not user_exists:
-        bot.send_message(
-            message.chat.id,
-            "❌ Вы не зарегистрированы. Для начала нажмите /start"
-        )
+        bot.send_message(message.chat.id, "❌ Вы не зарегистрированы. Для начала нажмите /start")
         return
 
-    # Вывод информации о пользователе
-    result = find_user_by_id('users', telegram_id, 'apartment, water_count, electricity_count')
+    result = find_user_by_id('users', telegram_id, 'apartment, water_count, electricity_count, name')
+
     if result:
-        apartment, water_count, electricity_type = result
-        rate = "Однотарифный" if electricity_type == "1" else "Двухтарифный"
-        bot.send_message(
-            message.chat.id,
-            f"🏠 Ваш профиль:\nКвартира: {apartment}\n"
-            f"Счётчиков воды: {water_count}\n"
-            f"Счетчик электричества: {rate}"
-        )
-        logger.info(f'Пользователь {message.from_user.id} Просматривает профиль')
-    else:
-        bot.send_message(
-            message.chat.id,
-            "❌ Ошибка при получении данных профиля"
+        apartment, water_count, electricity_type, name = result
+        rate = "Однотарифный" if electricity_type == 1 else "Двухтарифный"
+
+        # Создаем клавиатуру с несколькими кнопками
+        markup = types.InlineKeyboardMarkup(row_width=1)
+        markup.add(
+            types.InlineKeyboardButton("✏️ Изменить ФИО", callback_data=f'edit_name_{telegram_id}'),
+            types.InlineKeyboardButton("🏠 Изменить квартиру", callback_data=f'edit_apartment_{telegram_id}'),
+            types.InlineKeyboardButton("💧 Изменить счетчики воды", callback_data=f'edit_water_{telegram_id}'),
+            types.InlineKeyboardButton("⚡ Изменить электросчетчик", callback_data=f'edit_electric_{telegram_id}')
         )
 
+        bot.send_message(
+            message.chat.id,
+            f"🏠 Ваш профиль:\nФИО: {name}\nКвартира: {apartment}\n"
+            f"Счётчиков воды: {water_count}\n"
+            f"Счетчик электричества: {rate}",
+            reply_markup=markup
+        )
+    else:
+        bot.send_message(message.chat.id, "❌ Ошибка при получении данных профиля")
+
+
+def process_edit_choice(message):
+    """Обработка выбора изменения"""
+    # Реализуйте логику изменения данных
+    pass
 
 @bot.message_handler(commands=['auth'])
 def auth(message):
@@ -552,7 +562,7 @@ def handle_address_request(message):
     """
 
     # Проверка регистрации пользователя
-    if find_user_by_id('users', message.from_useer.id) is None:
+    if find_user_by_id('users', message.from_user.id) is None:
         bot.send_message(message.chat.id, "Вы не зарегистрированы. Чтобы начать работу введите /start")
         return
 
