@@ -38,6 +38,7 @@ def start(message):
         msg = bot.send_message(message.chat.id, '🔒 Для начала работы с ботом введите пароль доступа:')
         bot.register_next_step_handler(msg, check_password)
 
+
 def check_password(message):
     """
     Проверка введенного пароля
@@ -164,6 +165,7 @@ def select_meters(call):
         logger.error(f"Ошибка при завершении регистрации: {e}")
         bot.answer_callback_query(call.id, "❌ Произошла ошибка. Попробуйте снова.", show_alert=True)
 
+
 @bot.message_handler(commands=['export'])
 def export_data(message):
     """
@@ -179,6 +181,7 @@ def export_data(message):
         logger.info(f'Пользоватлель {message.chat.id} экспортировал Exel-таблицу с показаниями счетчтков')
         send_table(message.chat.id)
 
+
 @bot.message_handler(commands=['appeals'])
 def send_appeals(message):
     MANAGER_ID = find_staff_id('Председатель')
@@ -188,6 +191,7 @@ def send_appeals(message):
     else:
         logger.info(f'Пользоватлель {message.chat.id} экспортировал Exel-таблицу с обращениями')
         send_appeals_table(message.chat.id)
+
 
 @bot.message_handler(commands=['backup'])
 def backup(message):
@@ -390,6 +394,7 @@ def confirm_electric(call):
         logger.error(f"Ошибка при изменении электросчетчика: {e}")
         bot.answer_callback_query(call.id, "❌ Ошибка при изменении", show_alert=True)
 
+
 def process_new_apartment(message, telegram_id):
     """Обработка нового номера квартиры"""
     try:
@@ -470,9 +475,24 @@ def auth(message):
     :param message: Сообщение от пользователя - команда /auth
     :return: None
     """
+
+    # Проверка регистрации пользователя
+    if find_user_by_id('users', message.from_user.id) is None:
+        msg = bot.send_message(message.chat.id, "Введите код доступа")
+        bot.register_next_step_handler(msg, add_enter_code)
+        return
+
     msg = bot.send_message(message.chat.id, 'Введите код авторизации')
     bot.register_next_step_handler(msg, enter_auth_code)
 
+def add_enter_code(message):
+    code = message.text
+    if code == PASSWORD:
+        msg = bot.send_message(message.chat.id, "Bведите код авторизации")
+        bot.register_next_step_handler(msg, enter_auth_code)
+    else:
+        msg = bot.send_message(message.chat.id, "❌ Неверный пароль. Попробуйте еще раз:")
+        bot.register_next_step_handler(msg, add_enter_code)  # Снова вызываем проверку пароля
 
 def enter_auth_code(message):
     """
@@ -873,8 +893,6 @@ def start_staff_reply(call):
 
     _, user_id, message_id = call.data.split('_')
     active_dialogs[call.from_user.id] = (int(user_id), int(message_id), appeals_count)
-
-
 
     bot.send_message(
         call.from_user.id,
