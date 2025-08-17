@@ -46,125 +46,123 @@ def check_password(message):
     """
     if message.text.strip() == PASSWORD:
         # Пароль верный, предлагаем зарегистрироваться
-        markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton("Зарегистрироваться", callback_data='register'))
-        bot.send_message(message.chat.id, "👋 Добро пожаловать! Для начала зарегистрируйтесь:", reply_markup=markup)
+        bot.send_message(message.chat.id, "👋 Добро пожаловать! Для начала зарегистрируйтесь:")
+        msg = bot.send_message(message.chat.id, "Введите ФИО")
+        bot.register_next_step_handler(msg, check_name)
         logger.info(f'Пользователь {message.from_user.id} ввел верный пароль')
     else:
-        # Пароль неверный
-        msg = bot.send_message(message.chat.id, "❌ Неверный пароль")
-        bot.register_next_step_handler(msg, add_apartment_number)
+        # Пароль неверный - запрашиваем снова
+        msg = bot.send_message(message.chat.id, "❌ Неверный пароль. Попробуйте еще раз:")
+        bot.register_next_step_handler(msg, check_password)  # Снова вызываем проверку пароля
         logger.info(f'Пользователь {message.from_user.id} ввел неверный пароль')
-        return
-
-@bot.callback_query_handler(func=lambda call: call.data == 'register')
-def add_apartment_number(call):
-    """
-    Обработка нажатия кнопки "Зарегистрироваться" -> Требование ввода номера квартиры
-    :param call: Обработчик запроса
-    :return: None
-    """
-
-    # Ввод номера квартиры
-    msg = bot.send_message(call.message.chat.id, "Введите номер вашей квартиры (1–150):")
-    bot.register_next_step_handler(msg, register_apartment)
 
 
-def register_apartment(message):
-    """
-    Проверка корректности ввода номера квартиры
-    Проверка наличия квартиры в БД -> Запрос ввода колисества счетчиков
-    :param message: Сообщение, введенное пользователем
-    :return: None
-    """
-    # Проверка корректности номера квартиры
+def check_name(message):
+    if validate_russian_name(message.text):
+        # Сохраняем имя во временные данные
+        user_id = message.from_user.id
+        if user_id not in user_data:
+            user_data[user_id] = {}
+        user_data[user_id]['name'] = message.text.strip()  # Сохраняем имя
+
+        msg = bot.send_message(message.chat.id, "Введите номер вашей квартиры (от 1 до 150)")
+        bot.register_next_step_handler(msg, check_apartment_number)
+    else:
+        msg = bot.send_message(message.chat.id, "❌ Неверный формат ФИО. Введите в формате: Иванов Иван Иванович")
+        bot.register_next_step_handler(msg, check_name)
+
+
+def check_apartment_number(message):
     try:
         apartment = int(message.text.strip())
         if not 1 <= apartment <= 150:
             raise ValueError
-    except:
+
+        # Проверка наличия квартиры в БД
+        tablename = 'users'
+        users = select_all(tablename)
+        user_id = message.from_user.id
+
+        if any(u[2] == apartment for u in users):
+            bot.send_message(message.chat.id, "❌ Квартира уже зарегистрирована")
+            return
+
+        # Сохраняем номер квартиры (не перезаписываем весь словарь!)
+        user_data[user_id]['apartment'] = apartment
+
+        msg = bot.send_message(message.chat.id, "Введите количество счетчиков холодной воды (от 1 до 3):")
+        bot.register_next_step_handler(msg, check_water_meters)
+
+    except ValueError:
         msg = bot.send_message(message.chat.id, "❌ Введите число от 1 до 150")
-        bot.register_next_step_handler(msg, add_apartment_number)
-        return
-
-    # Проверка наличия квартиры в БД
-    tablename = 'users'
-    users = select_all(tablename)
-    user_id = message.from_user.id
-    if any(u[2] == apartment for u in users):
-        bot.send_message(message.chat.id, "❌ Квартира уже зарегистрирована")
-        return
-
-    # Ввод количества счетчиков воды
-    user_data[user_id] = {'apartment': apartment}
-    msg = bot.send_message(message.chat.id, "Введите количество счетчиков холодной воды (от 1 до 3):")
-    bot.register_next_step_handler(msg, check_water_meters)
+        bot.register_next_step_handler(msg, check_apartment_number)
 
 
 def check_water_meters(message):
-    """
-    Проверка корректности ввода количества счетчиков воды
-    Создание кнопок выбора типа электрочсетчика
-    :param message: Сообщение от пользователя
-    :return: None
-    """
-    # Проверка корректности ввода счетчиков
     try:
         water_meters = int(message.text.strip())
         if not 1 <= water_meters <= 3:
             raise ValueError
-    except:
+
+        # Сохраняем количество счетчиков (не перезаписываем весь словарь!)
+        user_id = message.from_user.id
+        user_data[user_id]['water_count'] = water_meters
+
+        # Кнопки выбора счетчика электричества
+        markup = types.InlineKeyboardMarkup()
+        markup.add(
+            types.InlineKeyboardButton('Однотарифный',
+                                       callback_data=f'elec_1_{water_meters}_{user_data[user_id]["apartment"]}'),
+            types.InlineKeyboardButton('Двухтарифный',
+                                       callback_data=f'elec_2_{water_meters}_{user_data[user_id]["apartment"]}')
+        )
+        bot.send_message(message.chat.id, "Выберите тип счетчика электричества", reply_markup=markup)
+
+    except ValueError:
         msg = bot.send_message(message.chat.id, "❌ Введите число от 1 до 3")
         bot.register_next_step_handler(msg, check_water_meters)
-        return
-
-    # Сохраняем данные о квартире
-    user_id = message.from_user.id
-    apartment = user_data[user_id]['apartment']
-    user_data[user_id] = {
-        'water_count': water_meters,
-        'apartment': apartment
-    }
-
-    # Кнопки выбора счетчика электричества
-    markup = types.InlineKeyboardMarkup()
-    markup.add(
-        types.InlineKeyboardButton('Однотарифный', callback_data=f'elec_1_{water_meters}_{apartment}'),
-        types.InlineKeyboardButton('Двухтарифный', callback_data=f'elec_2_{water_meters}_{apartment}')
-    )
-    bot.send_message(message.chat.id, "Выберите тип счетчика электричества", reply_markup=markup)
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('elec_'))
 def select_meters(call):
-    """
-    Завершение регистрации польщователя, добавление в БД
-    :param call: Обработчик запроса
-    :return: None
-    """
-    parts = call.data.split('_')
-    elec_type = parts[1]  # 1 или 2
-    water_count = parts[2]
-    user_id = call.from_user.id
-    tablename = 'users'
+    try:
+        parts = call.data.split('_')
+        elec_type = parts[1]
+        water_count = parts[2]
+        user_id = call.from_user.id
+        tablename = 'users'
 
-    # Получаем сохраненные данные
-    apartment = user_data[user_id]['apartment']
+        # Получаем сохраненные данные
+        if user_id not in user_data or 'name' not in user_data[user_id]:
+            bot.answer_callback_query(call.id, "❌ Ошибка: данные не найдены. Начните регистрацию заново.",
+                                      show_alert=True)
+            return
 
-    # Вставляем запись о квартире в БД
-    insert_to_database(tablename,
-                       ['telegram_id', 'apartment', 'water_count', 'electricity_count'],
-                       [user_id, int(apartment), int(water_count), int(elec_type)])
+        apartment = user_data[user_id]['apartment']
+        name = user_data[user_id]['name']
 
-    del user_data[user_id]
-    logger.info(f'Новый пользователь: {user_id}. Квартира {apartment}')
-    bot.send_message(call.message.chat.id, "✅ Регистрация успешна! Перейдите в профиль: /account")
-    ADMIN_ID = find_staff_id('Админ')
-    bot.send_message(ADMIN_ID,
-                     f"Новый пользователь: кв. {apartment}, \n"
-                     f"счетчиков воды: {water_count}, \n"
-                     f"тип счетчика электричества: {'двухтарифный' if elec_type == '2' else 'однотарифный'}")
+        # Вставляем запись о квартире в БД
+        insert_to_database(tablename,
+                           ['telegram_id', 'name', 'apartment', 'water_count', 'electricity_count'],
+                           [user_id, name, int(apartment), int(water_count), int(elec_type)])
 
+        # Очищаем временные данные
+        if user_id in user_data:
+            del user_data[user_id]
+
+        bot.answer_callback_query(call.id)
+        bot.send_message(call.message.chat.id, "✅ Регистрация успешна! Перейдите в профиль: /account")
+
+        ADMIN_ID = find_staff_id('Админ')
+        bot.send_message(ADMIN_ID,
+                         f"Новый пользователь: {name}\n"
+                         f"Квартира: {apartment}\n"
+                         f"Счетчиков воды: {water_count}\n"
+                         f"Тип счетчика электричества: {'двухтарифный' if elec_type == '2' else 'однотарифный'}")
+
+    except Exception as e:
+        logger.error(f"Ошибка при завершении регистрации: {e}")
+        bot.answer_callback_query(call.id, "❌ Произошла ошибка. Попробуйте снова.", show_alert=True)
 
 @bot.message_handler(commands=['export'])
 def export_data(message):
@@ -658,8 +656,8 @@ def send_address(message, recipient_info):
         bot.send_message(
             find_staff_id('Председатель'),
             f'📨 Обращение от жителя:\n'
-            f'‍💻Получатель: {recipient_info["recipient"]}'
-            f'👤 [{sender_name} {sender_surname}](tg://user?id={sender_id})\n'
+            f'‍💻 Получатель: {recipient_info["recipient"]}'
+            f'👤 Отправитель: [{sender_name} {sender_surname}](tg://user?id={sender_id})\n'
             f'🏠 Квартира: {apartment}\n\n'
             f'_{text}_',
             parse_mode="Markdown",
@@ -804,6 +802,7 @@ def init_db():
     """
     create_table('users', [
         "telegram_id INTEGER UNIQUE",
+        "name TEXT",
         "apartment INTEGER",
         "water_count INTEGER",
         "electricity_count INTEGER"

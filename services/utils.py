@@ -1,6 +1,31 @@
 from telebot import types
+import re
 from datetime import datetime
 from data.data import cold_water_meters, hot_water_meters, electricity_meters, months
+
+
+def validate_russian_name(full_name: str) -> bool:
+    # Нормализация строки (удаление лишних пробелов)
+    normalized_name = ' '.join(full_name.strip().split())
+
+    # Проверка на количество слов
+    parts = normalized_name.split()
+    if len(parts) not in [2, 3]:
+        return False
+
+    # Проверка каждой части
+    name_part_regex = r'^[А-ЯЁ][а-яё]*(?:-[А-ЯЁ][а-яё]*)?$'
+    for part in parts:
+        if not re.fullmatch(name_part_regex, part):
+            return False
+        if len(part) < 2 or len(part) > 30:
+            return False
+
+    # Проверка на запрещённые символы
+    if re.search(r'[0-9_!@#$%^&*(),.?":{}|<>]', normalized_name):
+        return False
+
+    return True
 
 
 def get_month():
