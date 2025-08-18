@@ -1,6 +1,5 @@
 import sqlite3
 
-
 from services.logger import logger
 
 db = 'tsg_database.sql'
@@ -235,24 +234,45 @@ def update_values(table_name, set_values, where_conditions):
 
 
 def update_appeal_status(answer_text, appeal_id):
-    cur = None
+    """
+    Обновление статуса обращения и записи ответа в БД
+    :param answer_text: Текст ответа
+    :param appeal_id: ID обращения
+    """
     conn = None
+    cur = None
     try:
         conn = sqlite3.connect(db)
         cur = conn.cursor()
 
-        cur.execute('UPDATE appeals SET status = ?, answer_text = ? WHERE id = ?',
-                    ('closed', answer_text, appeal_id))
+        # Получаем текущие ответы (если есть)
+        cur.execute('SELECT answer_text FROM appeals WHERE id = ?', (appeal_id,))
+        existing_answer = cur.fetchone()
+
+        # Формируем новый ответ с сохранением истории
+        new_answer = f"{existing_answer[0]}\n\n---\n\n{answer_text}" if existing_answer and existing_answer[
+            0] else answer_text
+
+        # Обновляем запись с сохранением даты ответа
+        cur.execute('''
+            UPDATE appeals SET 
+                status = 'closed',
+                answer_text = ?
+            WHERE id = ?
+        ''', (new_answer, appeal_id))
+
         conn.commit()
+        logger.info(f"Обновлен ответ для обращения ID {appeal_id}")
 
     except Exception as e:
-        logger.error(f"Ошибка в функции update_appeal_status: {e}")
+        logger.error(f"Ошибка при обновлении обращения {appeal_id}: {e}")
         raise
     finally:
         if cur:
             cur.close()
         if conn:
             conn.close()
+
 
 def check_appeal_status(appeal_id):
     cur = None

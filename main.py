@@ -52,7 +52,7 @@ def check_password(message):
         bot.register_next_step_handler(msg, check_name)
         logger.info(f'Пользователь {message.from_user.id} ввел верный пароль')
 
-    if message.text.strip().lower() == '/cancel':
+    elif message.text.strip().lower() == '/cancel':
         bot.send_message(message.chat.id, "❌ Действие отменено")
         return
 
@@ -74,7 +74,7 @@ def check_name(message):
         msg = bot.send_message(message.chat.id, "Введите номер вашей квартиры (от 1 до 150)")
         bot.register_next_step_handler(msg, check_apartment_number)
 
-    if message.text.strip().lower() == '/cancel':
+    elif message.text.strip().lower() == '/cancel':
         bot.send_message(message.chat.id, "❌ Действие отменено")
         return
 
@@ -319,7 +319,7 @@ def process_new_name(message, telegram_id):
         update_values('users', {'name': message.text.strip()}, {'telegram_id': telegram_id})
         bot.send_message(message.chat.id, "✅ ФИО успешно изменено")
 
-    if message.text.strip().lower() == '/cancel':
+    elif message.text.strip().lower() == '/cancel':
         bot.send_message(message.chat.id, "❌ Действие отменено")
         return
 
@@ -517,14 +517,15 @@ def auth(message):
 
 
 def add_enter_code(message):
-    if message.text.strip().lower() == '/cancel':
-        bot.send_message(message.chat.id, "❌ Действие отменено")
-        return
-
     code = message.text
     if code == PASSWORD:
         msg = bot.send_message(message.chat.id, "Bведите код авторизации")
         bot.register_next_step_handler(msg, enter_auth_code)
+
+    elif message.text.strip().lower() == '/cancel':
+        bot.send_message(message.chat.id, "❌ Действие отменено")
+        return
+
     else:
         msg = bot.send_message(message.chat.id, "❌ Неверный пароль. Попробуйте еще раз:")
         bot.register_next_step_handler(msg, add_enter_code)  # Снова вызываем проверку пароля
@@ -873,13 +874,14 @@ def send_address(message, recipient_info):
         message_text=text,
         recirient_post=recipient_info['recipient']
     )
+    data = find_user_by_id('users', sender_id, 'name, apartment')
     appeals_count += 1
     with open('count.txt', 'w') as file:
         file.write(str(appeals_count))  # Записываем как строку
     # Сохраняем обращение в базу данных
     insert_to_database('appeals',
-                       ['sender_id', 'apartment', 'message_text', 'recipient_post'],
-                       [ap.sender_id, ap.apartment, ap.message_text, ap.recipient_post]
+                       ['sender_id', 'apartment', 'message_text', 'recipient_post', 'name'],
+                       [ap.sender_id, ap.apartment, ap.message_text, ap.recipient_post, data[0]]
                        )
 
     # Кнопка отправки сообщения
@@ -889,7 +891,7 @@ def send_address(message, recipient_info):
         callback_data=f"reply_{sender_id}_{message.message_id}"
     ))
 
-    data = find_user_by_id('users', sender_id, 'name, apartment')
+
     user_name = data[0]
     apartment = data[1]
 
@@ -990,7 +992,11 @@ def process_staff_reply(message):
         )
 
     # Обновляем статус в БД
-    update_appeal_status(message.text, active_dialogs[staff_id][2])
+    # Вместо текущего вызова update_appeal_status:
+    update_appeal_status(
+        answer_text=f"Ответ {staff_position}:\n{message.text}",
+        appeal_id=active_dialogs[staff_id][2]
+    )
     logger.info(f'Ответ {staff_position} на обращение')
     bot.send_message(staff_id, "✅ Ответ отправлен")
     del active_dialogs[staff_id]
@@ -1091,6 +1097,7 @@ def init_db():
     create_table('appeals', [
         'sender_id INTEGER',
         'apartment INTEGER',
+        'name TEXT',
         'message_text TEXT',
         'recipient_post TEXT',
         'answer_text TEXT',
@@ -1173,15 +1180,18 @@ if __name__ == '__main__':
             bot.polling(none_stop=True, timeout=30)
 
         except ConnectionError as e:
+            bot.send_message(find_staff_id("Админ"), f"Ошибка соединения: {e}. Перезапуск через 10 секунд...")
             logger.error(f"Ошибка соединения: {e}. Перезапуск через 10 секунд...")
             print(f"Ошибка соединения: {e}. Перезапуск через 10 секунд...")
             time.sleep(10)
 
         except Exception as e:
+            bot.send_message(find_staff_id("Админ"), f"Критическая ошибка: {e}. Перезапуск через 30 секунд...")
             logger.error(f"Критическая ошибка: {e}. Перезапуск через 30 секунд...")
             print(f"Критическая ошибка: {e}. Перезапуск через 30 секунд...")
             time.sleep(30)
 
         finally:
+            bot.send_message(find_staff_id("Админ"), "Очистка ресурсов перед перезапуском...")
             logger.info("Очистка ресурсов перед перезапуском...")
             # Дополнительные действия по очистке при необходимости
