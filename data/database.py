@@ -245,21 +245,13 @@ def update_appeal_status(answer_text, appeal_id):
         conn = sqlite3.connect(db)
         cur = conn.cursor()
 
-        # Получаем текущие ответы (если есть)
-        cur.execute('SELECT answer_text FROM appeals WHERE id = ?', (appeal_id,))
-        existing_answer = cur.fetchone()
-
-        # Формируем новый ответ с сохранением истории
-        new_answer = f"{existing_answer[0]}\n\n---\n\n{answer_text}" if existing_answer and existing_answer[
-            0] else answer_text
-
-        # Обновляем запись с сохранением даты ответа
+        # Обновляем запись
         cur.execute('''
             UPDATE appeals SET 
                 status = 'closed',
                 answer_text = ?
             WHERE id = ?
-        ''', (new_answer, appeal_id))
+        ''', (answer_text, appeal_id))
 
         conn.commit()
         logger.info(f"Обновлен ответ для обращения ID {appeal_id}")

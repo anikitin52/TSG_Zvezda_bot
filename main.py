@@ -864,36 +864,46 @@ def send_address(message, recipient_info):
     text = message.text.strip() if message.text else ""
     sender_id = message.from_user.id
 
-    # Получаем номер квартиры из базы данных
-    result = find_user_by_id("users", sender_id, "apartment")
-    apartment = result[0] if result else "Неизвестна"
-
-    ap = Appeal(
-        sender_id=sender_id,
-        apartment=apartment,
-        message_text=text,
-        recirient_post=recipient_info['recipient']
-    )
+    # Получаем данные пользователя
     data = find_user_by_id('users', sender_id, 'name, apartment')
-    appeals_count += 1
-    with open('count.txt', 'w') as file:
-        file.write(str(appeals_count))  # Записываем как строку
-    # Сохраняем обращение в базу данных
-    insert_to_database('appeals',
-                       ['sender_id', 'apartment', 'message_text', 'recipient_post', 'name'],
-                       [ap.sender_id, ap.apartment, ap.message_text, ap.recipient_post, data[0]]
-                       )
+    if not data:
+        bot.send_message(message.chat.id, "❌ Ошибка: данные пользователя не найдены")
+        return
+
+    user_name, apartment = data
+
+    # Вставляем обращение в БД и получаем его ID
+    try:
+        conn = sqlite3.connect(db)
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO appeals (sender_id, apartment, name, message_text, recipient_post) VALUES (?, ?, ?, ?, ?)",
+            (sender_id, apartment, user_name, text, recipient_info['recipient'])
+        )
+        appeal_id = cur.lastrowid
+        conn.commit()
+
+        # Обновляем счетчик обращений
+        appeals_count += 1
+        with open('count.txt', 'w') as file:
+            file.write(str(appeals_count))
+
+    except Exception as e:
+        logger.error(f"Ошибка при записи обращения: {e}")
+        bot.send_message(message.chat.id, "❌ Ошибка при отправке обращения")
+        return
+    finally:
+        if 'cur' in locals():
+            cur.close()
+        if 'conn' in locals():
+            conn.close()
 
     # Кнопка отправки сообщения
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton(
         "Ответить",
-        callback_data=f"reply_{sender_id}_{message.message_id}"
+        callback_data=f"reply_{sender_id}_{message.message_id}_{appeal_id}"
     ))
-
-
-    user_name = data[0]
-    apartment = data[1]
 
     # Формируем и отправляем сообщение
     bot.send_message(
@@ -906,25 +916,27 @@ def send_address(message, recipient_info):
         reply_markup=markup
     )
 
-    # Отправка председателю
+    # Сохраняем данные диалога
+    active_dialogs[recipient_info['id']] = {
+        'user_id': sender_id,
+        'message_id': message.message_id,
+        'appeal_id': appeal_id
+    }
+
+    # Отправка копии председателю (если получатель не председатель)
     if recipient_info['id'] != find_staff_id('Председатель'):
         bot.send_message(
             find_staff_id('Председатель'),
             f'📨 Обращение от жителя:\n'
-            f'‍💻 Получатель: {recipient_info["recipient"]}'
+            f'‍💻 Получатель: {recipient_info["recipient"]}\n'
             f'👤 Отправитель: [{user_name}](tg://user?id={sender_id})\n'
             f'🏠 Квартира: {apartment}\n\n'
             f'_{text}_',
             parse_mode="Markdown",
         )
 
-    logger.info(f"Отправлено обращение от пользователя{sender_id}. Получатель {recipient_info['recipient']}")
-
-    # Отправляем подтверждение пользователю
+    logger.info(f"Отправлено обращение от пользователя {sender_id}. Получатель {recipient_info['recipient']}")
     bot.send_message(message.chat.id, recipient_info['response_success'])
-
-    # Логируем действие
-    logger.info(f'{recipient_info["message_type"]} отправлено. Кв. {apartment}, ID {sender_id}')
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('reply_'))
@@ -934,9 +946,21 @@ def start_staff_reply(call):
     :param call: вызов функции с требованием ответа на обращение
     :return: None
     """
+    parts = call.data.split('_')
+    if len(parts) < 4:
+        bot.answer_callback_query(call.id, "❌ Ошибка: неверный формат запроса")
+        return
 
-    _, user_id, message_id = call.data.split('_')
-    active_dialogs[call.from_user.id] = (int(user_id), int(message_id), appeals_count)
+    user_id = int(parts[1])
+    message_id = int(parts[2])
+    appeal_id = int(parts[3])
+
+    # Сохраняем данные диалога
+    active_dialogs[call.from_user.id] = {
+        'user_id': user_id,
+        'message_id': message_id,
+        'appeal_id': appeal_id
+    }
 
     bot.send_message(
         call.from_user.id,
@@ -956,12 +980,16 @@ def process_staff_reply(message):
     if staff_id not in active_dialogs:
         return
 
+    dialog_data = active_dialogs[staff_id]
+    user_id = dialog_data['user_id']
+    appeal_id = dialog_data['appeal_id']
+
     MANAGER_ID = find_staff_id('Председатель')
     ACCOUNTANT_ID = find_staff_id('Бухгалтер')
-    PLUMBER_ID = find_staff_id('Сантехник')
     ELECTRIC_ID = find_staff_id('Электрик')
+    PLUMBER_ID = find_staff_id('Сантехник')
 
-    user_id, original_message_id, appeal_id = active_dialogs[staff_id]
+    # Определяем должность отвечающего
     if staff_id == MANAGER_ID:
         staff_position = "председателя ТСЖ"
     elif staff_id == ACCOUNTANT_ID:
@@ -973,31 +1001,44 @@ def process_staff_reply(message):
     else:
         staff_position = "администрации"
 
-    # Отправляем ответ пользователю
+    # Формируем текст ответа
     bot.send_message(user_id, f"📩 Ответ {staff_position} на ваше обращение:\n\n{message.text}")
 
-    data = find_user_by_id('users', user_id, 'name, apartment')
-    user_name = data[0]
-    apartment = data[1]
-
-    # Отправляем копию ответа председателю
-    if staff_id != MANAGER_ID:
-        bot.send_message(
-            find_staff_id('Председатель'),
-            f'📩 Ответ {staff_position}:\n'
-            f'‍💻 Получатель: {user_name}\n'
-            f'🏠 Квартира: {apartment}\n\n'
-            f'_{message.text}_',
-            parse_mode="Markdown",
+    # Обновляем обращение в БД
+    try:
+        conn = sqlite3.connect(db)
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE appeals SET answer_text = ?, status = 'closed' WHERE id = ?",
+            (message.text, appeal_id)
         )
+        conn.commit()
+    except Exception as e:
+        logger.error(f"Ошибка при обновлении обращения: {e}")
+        bot.send_message(staff_id, "❌ Ошибка при сохранении ответа")
+        return
+    finally:
+        if 'cur' in locals():
+            cur.close()
+        if 'conn' in locals():
+            conn.close()
 
-    # Обновляем статус в БД
-    # Вместо текущего вызова update_appeal_status:
-    update_appeal_status(
-        answer_text=f"Ответ {staff_position}:\n{message.text}",
-        appeal_id=active_dialogs[staff_id][2]
-    )
-    logger.info(f'Ответ {staff_position} на обращение')
+
+    # Отправляем копию председателю (если отвечающий не председатель)
+    if staff_id != find_staff_id('Председатель'):
+        user_data = find_user_by_id('users', user_id, 'name, apartment')
+        if user_data:
+            user_name, apartment = user_data
+            bot.send_message(
+                find_staff_id('Председатель'),
+                f'📩 Ответ {staff_position}:\n'
+                f'‍💻 Получатель: {user_name}\n'
+                f'🏠 Квартира: {apartment}\n\n'
+                f'_{message.text}_',
+                parse_mode="Markdown"
+            )
+
+    logger.info(f'Ответ {staff_position} на обращение ID {appeal_id}')
     bot.send_message(staff_id, "✅ Ответ отправлен")
     del active_dialogs[staff_id]
 
