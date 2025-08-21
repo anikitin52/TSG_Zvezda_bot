@@ -1,18 +1,18 @@
-from telebot import TeleBot, types
-from apscheduler.schedulers.background import BackgroundScheduler
-from datetime import datetime
+import os
+import shutil
 import threading
 import time
-import shutil
-import os
+
+from apscheduler.schedulers.background import BackgroundScheduler
+from telebot import TeleBot
 
 from config import *
-from data.models import User, Appeal
-from services.utils import *
 from data.data import *
-from services.exel_export import send_table, send_appeals_table
 from data.database import *
+from data.models import User
+from services.exel_export import send_table, send_appeals_table
 from services.logger import logger
+from services.utils import *
 
 bot = TeleBot(BOT_TOKEN)
 now = datetime.now()
@@ -25,18 +25,26 @@ def start(message):
     :param message: Сообщение от пользователя - Команда /start
     :return: None
     """
-    tablename = 'users'
-    user_id = message.from_user.id
+    try:
+        tablename = 'users'
+        user_id = message.from_user.id
 
-    # Проверяем наличие пользователя
-    user = find_user_by_id(tablename, user_id)
-    if user:
-        apartment = user[3]
-        bot.send_message(message.chat.id, f"✅ Вы уже зарегистрированы! Квартира: {apartment}")
-    else:
-        # Запрашиваем пароль у нового пользователя
-        msg = bot.send_message(message.chat.id, '🔒 Для начала работы с ботом введите пароль доступа:')
-        bot.register_next_step_handler(msg, check_password)
+        # Проверяем наличие пользователя
+        user = find_user_by_id(tablename, user_id)
+        if user:
+            apartment = user[3]
+            bot.send_message(message.chat.id, f"✅ Вы уже зарегистрированы! Квартира: {apartment}")
+        else:
+            # Запрашиваем пароль у нового пользователя
+            msg = bot.send_message(message.chat.id, '🔒 Для начала работы с ботом введите пароль доступа:')
+            bot.register_next_step_handler(msg, check_password)
+    except Exception as e:
+        logger.error(f"Ошибка в /start: {e}", exc_info=True)
+        try:
+            bot.send_message(message.chat.id, "❌ Произошла ошибка. Попробуйте позже.")
+        except:
+            pass
+        handle_error(e)
 
 
 def check_password(message):
@@ -45,100 +53,134 @@ def check_password(message):
     :param message: Сообщение с введенным паролем
     :return: None
     """
-    if message.text.strip() == PASSWORD:
-        # Пароль верный, предлагаем зарегистрироваться
-        bot.send_message(message.chat.id, "👋 Добро пожаловать! Для начала зарегистрируйтесь:")
-        msg = bot.send_message(message.chat.id, "Введите ФИО")
-        bot.register_next_step_handler(msg, check_name)
-        logger.info(f'Пользователь {message.from_user.id} ввел верный пароль')
+    try:
+        if message.text.strip() == PASSWORD:
+            # Пароль верный, предлагаем зарегистрироваться
+            bot.send_message(message.chat.id, "👋 Добро пожаловать! Для начала зарегистрируйтесь:")
+            msg = bot.send_message(message.chat.id, "Введите ФИО")
+            bot.register_next_step_handler(msg, check_name)
+            logger.info(f'Пользователь {message.from_user.id} ввел верный пароль')
 
-    elif message.text.strip().lower() == '/cancel':
-        bot.send_message(message.chat.id, "❌ Действие отменено")
-        return
+        elif message.text.strip().lower() == '/cancel':
+            bot.send_message(message.chat.id, "❌ Действие отменено")
+            return
 
-    else:
-        # Пароль неверный - запрашиваем снова
-        msg = bot.send_message(message.chat.id, "❌ Неверный пароль. Попробуйте еще раз:")
-        bot.register_next_step_handler(msg, check_password)  # Снова вызываем проверку пароля
-        logger.info(f'Пользователь {message.from_user.id} ввел неверный пароль')
+        else:
+            # Пароль неверный - запрашиваем снова
+            msg = bot.send_message(message.chat.id, "❌ Неверный пароль. Попробуйте еще раз:")
+            bot.register_next_step_handler(msg, check_password)  # Снова вызываем проверку пароля
+            logger.info(f'Пользователь {message.from_user.id} ввел неверный пароль')
+
+    except Exception as e:
+        logger.error(f"Ошибка в check_name: {e}", exc_info=True)
+        try:
+            bot.send_message(message.chat.id, "❌ Произошла ошибка. Попробуйте позже.")
+        except:
+            pass
+        handle_error(e)
 
 
 def check_name(message):
-    if validate_russian_name(message.text):
-        # Сохраняем имя во временные данные
-        user_id = message.from_user.id
-        if user_id not in user_data:
-            user_data[user_id] = {}
-        user_data[user_id]['name'] = message.text.strip()  # Сохраняем имя
+    try:
+        if validate_russian_name(message.text):
+            # Сохраняем имя во временные данные
+            user_id = message.from_user.id
+            if user_id not in user_data:
+                user_data[user_id] = {}
+            user_data[user_id]['name'] = message.text.strip()  # Сохраняем имя
 
-        msg = bot.send_message(message.chat.id, "Введите номер вашей квартиры (от 1 до 150)")
-        bot.register_next_step_handler(msg, check_apartment_number)
+            msg = bot.send_message(message.chat.id, "Введите номер вашей квартиры (от 1 до 150)")
+            bot.register_next_step_handler(msg, check_apartment_number)
 
-    elif message.text.strip().lower() == '/cancel':
-        bot.send_message(message.chat.id, "❌ Действие отменено")
-        return
+        elif message.text.strip().lower() == '/cancel':
+            bot.send_message(message.chat.id, "❌ Действие отменено")
+            return
 
-    else:
-        msg = bot.send_message(message.chat.id, "❌ Неверный формат ФИО. Введите в формате: Иванов Иван Иванович")
-        bot.register_next_step_handler(msg, check_name)
+        else:
+            msg = bot.send_message(message.chat.id, "❌ Неверный формат ФИО. Введите в формате: Иванов Иван Иванович")
+            bot.register_next_step_handler(msg, check_name)
+    except Exception as e:
+        logger.error(f"Ошибка в check_name: {e}", exc_info=True)
+        try:
+            bot.send_message(message.chat.id, "❌ Произошла ошибка. Попробуйте позже.")
+        except:
+            pass
+        handle_error(e)
 
 
 def check_apartment_number(message):
-    if message.text.strip().lower() == '/cancel':
-        bot.send_message(message.chat.id, "❌ Действие отменено")
-        return
-
     try:
-        apartment = int(message.text.strip())
-        if not 1 <= apartment <= 150:
-            raise ValueError
-
-        # Проверка наличия квартиры в БД
-        tablename = 'users'
-        users = select_all(tablename)
-        user_id = message.from_user.id
-
-        if any(u[2] == apartment for u in users):
-            bot.send_message(message.chat.id, "❌ Квартира уже зарегистрирована")
+        if message.text.strip().lower() == '/cancel':
+            bot.send_message(message.chat.id, "❌ Действие отменено")
             return
 
-        # Сохраняем номер квартиры (не перезаписываем весь словарь!)
-        user_data[user_id]['apartment'] = apartment
+        try:
+            apartment = int(message.text.strip())
+            if not 1 <= apartment <= 150:
+                raise ValueError
 
-        msg = bot.send_message(message.chat.id, "Введите количество счетчиков холодной воды (от 1 до 3):")
-        bot.register_next_step_handler(msg, check_water_meters)
+            # Проверка наличия квартиры в БД
+            tablename = 'users'
+            users = select_all(tablename)
+            user_id = message.from_user.id
 
-    except ValueError:
-        msg = bot.send_message(message.chat.id, "❌ Введите число от 1 до 150")
-        bot.register_next_step_handler(msg, check_apartment_number)
+            if any(u[2] == apartment for u in users):
+                bot.send_message(message.chat.id, "❌ Квартира уже зарегистрирована")
+                return
+
+            # Сохраняем номер квартиры (не перезаписываем весь словарь!)
+            user_data[user_id]['apartment'] = apartment
+
+            msg = bot.send_message(message.chat.id, "Введите количество счетчиков холодной воды (от 1 до 3):")
+            bot.register_next_step_handler(msg, check_water_meters)
+
+        except ValueError:
+            msg = bot.send_message(message.chat.id, "❌ Введите число от 1 до 150")
+            bot.register_next_step_handler(msg, check_apartment_number)
+    except Exception as e:
+        logger.error(f"Ошибка в check_apartment_number: {e}", exc_info=True)
+        try:
+            bot.send_message(message.chat.id, "❌ Произошла ошибка. Попробуйте позже.")
+        except:
+            pass
+        handle_error(e)
 
 
 def check_water_meters(message):
-    if message.text.strip().lower() == '/cancel':
-        bot.send_message(message.chat.id, "❌ Действие отменено")
-        return
     try:
-        water_meters = int(message.text.strip())
-        if not 1 <= water_meters <= 3:
-            raise ValueError
+        if message.text.strip().lower() == '/cancel':
+            bot.send_message(message.chat.id, "❌ Действие отменено")
+            return
+        try:
+            water_meters = int(message.text.strip())
+            if not 1 <= water_meters <= 3:
+                raise ValueError
 
-        # Сохраняем количество счетчиков (не перезаписываем весь словарь!)
-        user_id = message.from_user.id
-        user_data[user_id]['water_count'] = water_meters
+            # Сохраняем количество счетчиков (не перезаписываем весь словарь!)
+            user_id = message.from_user.id
+            user_data[user_id]['water_count'] = water_meters
 
-        # Кнопки выбора счетчика электричества
-        markup = types.InlineKeyboardMarkup()
-        markup.add(
-            types.InlineKeyboardButton('Однотарифный',
-                                       callback_data=f'elec_1_{water_meters}_{user_data[user_id]["apartment"]}'),
-            types.InlineKeyboardButton('Двухтарифный',
-                                       callback_data=f'elec_2_{water_meters}_{user_data[user_id]["apartment"]}')
-        )
-        bot.send_message(message.chat.id, "Выберите тип счетчика электричества", reply_markup=markup)
+            # Кнопки выбора счетчика электричества
+            markup = types.InlineKeyboardMarkup()
+            markup.add(
+                types.InlineKeyboardButton('Однотарифный',
+                                           callback_data=f'elec_1_{water_meters}_{user_data[user_id]["apartment"]}'),
+                types.InlineKeyboardButton('Двухтарифный',
+                                           callback_data=f'elec_2_{water_meters}_{user_data[user_id]["apartment"]}')
+            )
+            bot.send_message(message.chat.id, "Выберите тип счетчика электричества", reply_markup=markup)
 
-    except ValueError:
-        msg = bot.send_message(message.chat.id, "❌ Введите число от 1 до 3")
-        bot.register_next_step_handler(msg, check_water_meters)
+        except ValueError:
+            msg = bot.send_message(message.chat.id, "❌ Введите число от 1 до 3")
+            bot.register_next_step_handler(msg, check_water_meters)
+
+    except Exception as e:
+        logger.error(f"Ошибка в check_water_meters: {e}", exc_info=True)
+        try:
+            bot.send_message(message.chat.id, "❌ Произошла ошибка. Попробуйте позже.")
+        except:
+            pass
+        handle_error(e)
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('elec_'))
@@ -190,35 +232,62 @@ def export_data(message):
     :param message: Сообщение от пользователя - команда -> /export
     :return: None
     """
-    ACCOUNTANT_ID = find_staff_id('Бухгалтер')
-    if message.chat.id != ACCOUNTANT_ID:
-        bot.send_message(message.chat.id, "❌ У вас нет доступа к этой команде")
-        return
-    else:
-        logger.info(f'Пользоватлель {message.chat.id} экспортировал Exel-таблицу с показаниями счетчтков')
-        send_table(message.chat.id)
+    try:
+        ACCOUNTANT_ID = find_staff_id('Бухгалтер')
+        if message.chat.id != ACCOUNTANT_ID:
+            bot.send_message(message.chat.id, "❌ У вас нет доступа к этой команде")
+            return
+        else:
+            logger.info(f'Пользоватлель {message.chat.id} экспортировал Exel-таблицу с показаниями счетчтков')
+            send_table(message.chat.id)
+
+    except Exception as e:
+        logger.error(f"Ошибка в export_data: {e}", exc_info=True)
+        try:
+            bot.send_message(message.chat.id, "❌ Произошла ошибка. Попробуйте позже.")
+        except:
+            pass
+        handle_error(e)
 
 
 @bot.message_handler(commands=['appeals'])
 def send_appeals(message):
-    MANAGER_ID = find_staff_id('Председатель')
-    if message.chat.id != MANAGER_ID:
-        bot.send_message(message.chat.id, "❌ У вас нет доступа к этой команде")
-        return
-    else:
-        logger.info(f'Пользоватлель {message.chat.id} экспортировал Exel-таблицу с обращениями')
-        send_appeals_table(message.chat.id)
+    try:
+        MANAGER_ID = find_staff_id('Председатель')
+        if message.chat.id != MANAGER_ID:
+            bot.send_message(message.chat.id, "❌ У вас нет доступа к этой команде")
+            return
+        else:
+            logger.info(f'Пользоватлель {message.chat.id} экспортировал Exel-таблицу с обращениями')
+            send_appeals_table(message.chat.id)
+
+    except Exception as e:
+        logger.error(f"Ошибка в send_appeals: {e}", exc_info=True)
+        try:
+            bot.send_message(message.chat.id, "❌ Произошла ошибка. Попробуйте позже.")
+        except:
+            pass
+        handle_error(e)
 
 
 @bot.message_handler(commands=['backup'])
 def backup(message):
-    admin = find_staff_id('Админ')
-    if message.from_user.id != admin:
-        bot.send_message(message.chat.id, "❌ У вас нет доступа к этой команде")
-        return
-    else:
-        backup_daily()
-        backup_monthly()
+    try:
+        admin = find_staff_id('Админ')
+        if message.from_user.id != admin:
+            bot.send_message(message.chat.id, "❌ У вас нет доступа к этой команде")
+            return
+        else:
+            backup_daily()
+            backup_monthly()
+
+    except Exception as e:
+        logger.error(f"Ошибка в backup: {e}", exc_info=True)
+        try:
+            bot.send_message(message.chat.id, "❌ Произошла ошибка. Попробуйте позже.")
+        except:
+            pass
+        handle_error(e)
 
 
 @bot.message_handler(commands=['info'])
@@ -228,274 +297,390 @@ def info(message):
     :param message: Сообщение от пользователя - команда /info
     :return: None
     """
+    try:
+        if find_user_by_id('users', message.from_user.id) is None:
+            bot.send_message(message.chat.id, "Вы не зарегистрированы. Чтобы начать работу введите /start")
+            return
 
-    if find_user_by_id('users', message.from_user.id) is None:
-        bot.send_message(message.chat.id, "Вы не зарегистрированы. Чтобы начать работу введите /start")
-        return
+        result = "Список доступных вам команд: \n"
+        user_status = 'user'
+        result += '''
+        /send - Передать показания счетчиков \n
+        /manager - Отправить обращение к председателю \n
+        /accountant - Отправить обращение к бухгалтеру \n
+        /account - Переход в профиль квартиры \n
+        '''
+        staff_id = [
+            find_staff_id('Админ'),
+            find_staff_id('Председатель'),
+            find_staff_id('Бухгалтер')
+        ]
+        for id in staff_id:
+            if message.from_user.id == id:
+                user_status = 'staff'
 
-    result = "Список доступных вам команд: \n"
-    user_status = 'user'
-    result += '''
-    /send - Передать показания счетчиков \n
-    /manager - Отправить обращение к председателю \n
-    /accountant - Отправить обращение к бухгалтеру \n
-    /account - Переход в профиль квартиры \n
-    '''
-    staff_id = [
-        find_staff_id('Админ'),
-        find_staff_id('Председатель'),
-        find_staff_id('Бухгалтер')
-    ]
-    for id in staff_id:
-        if message.from_user.id == id:
-            user_status = 'staff'
+        if user_status == 'staff':
+            result += "Специальные команды, доступныке вам \n"
+            if message.from_user.id == staff_id[0]:
+                result += "/backup - Сохранить резервную копию базы данных \n"
+            if message.from_user.id == staff_id[1]:
+                pass
+            if message.from_user.id == staff_id[2]:
+                result += '/export - Получить Exel-таблицу с показаниями счетчиков \n'
 
-    if user_status == 'staff':
-        result += "Специальные команды, доступныке вам \n"
-        if message.from_user.id == staff_id[0]:
-            result += "/backup - Сохранить резервную копию базы данных \n"
-        if message.from_user.id == staff_id[1]:
+        bot.send_message(message.chat.id, result)
+
+    except Exception as e:
+        logger.error(f"Ошибка в info: {e}", exc_info=True)
+        try:
+            bot.send_message(message.chat.id, "❌ Произошла ошибка. Попробуйте позже.")
+        except:
             pass
-        if message.from_user.id == staff_id[2]:
-            result += '/export - Получить Exel-таблицу с показаниями счетчиков \n'
-
-    bot.send_message(message.chat.id, result)
+        handle_error(e)
 
 
 @bot.message_handler(commands=['account'])
 def account(message):
     """Вывод профиля с кнопками редактирования"""
-    telegram_id = message.from_user.id
-    user_exists = find_user_by_id('users', telegram_id, 'COUNT(*)')[0] > 0
+    try:
+        telegram_id = message.from_user.id
+        user_exists = find_user_by_id('users', telegram_id, 'COUNT(*)')[0] > 0
 
-    if not user_exists:
-        bot.send_message(message.chat.id, "❌ Вы не зарегистрированы. Для начала нажмите /start")
-        return
+        if not user_exists:
+            bot.send_message(message.chat.id, "❌ Вы не зарегистрированы. Для начала нажмите /start")
+            return
 
-    result = find_user_by_id('users', telegram_id, 'apartment, water_count, electricity_count, name')
+        result = find_user_by_id('users', telegram_id, 'apartment, water_count, electricity_count, name')
 
-    if result:
-        apartment, water_count, electricity_type, name = result
-        rate = "Однотарифный" if electricity_type == 1 else "Двухтарифный"
+        if result:
+            apartment, water_count, electricity_type, name = result
+            rate = "Однотарифный" if electricity_type == 1 else "Двухтарифный"
 
-        # Создаем клавиатуру с несколькими кнопками
-        markup = types.InlineKeyboardMarkup(row_width=1)
-        markup.add(
-            types.InlineKeyboardButton("✏️ Изменить ФИО", callback_data=f'edit_name_{telegram_id}'),
-            types.InlineKeyboardButton("🏠 Изменить квартиру", callback_data=f'edit_apartment_{telegram_id}'),
-            types.InlineKeyboardButton("💧 Изменить счетчики воды", callback_data=f'edit_water_{telegram_id}'),
-            types.InlineKeyboardButton("⚡ Изменить электросчетчик", callback_data=f'edit_electric_{telegram_id}'),
-            types.InlineKeyboardButton("❌ Удалить аккаунт", callback_data=f'delete_account_{telegram_id}')
-        )
+            # Создаем клавиатуру с несколькими кнопками
+            markup = types.InlineKeyboardMarkup(row_width=1)
+            markup.add(
+                types.InlineKeyboardButton("✏️ Изменить ФИО", callback_data=f'edit_name_{telegram_id}'),
+                types.InlineKeyboardButton("🏠 Изменить квартиру", callback_data=f'edit_apartment_{telegram_id}'),
+                types.InlineKeyboardButton("💧 Изменить счетчики воды", callback_data=f'edit_water_{telegram_id}'),
+                types.InlineKeyboardButton("⚡ Изменить электросчетчик", callback_data=f'edit_electric_{telegram_id}'),
+                types.InlineKeyboardButton("❌ Удалить аккаунт", callback_data=f'delete_account_{telegram_id}')
+            )
 
-        bot.send_message(
-            message.chat.id,
-            f"🏠 Ваш профиль:\nФИО: {name}\nКвартира: {apartment}\n"
-            f"Счётчиков воды: {water_count}\n"
-            f"Счетчик электричества: {rate}",
-            reply_markup=markup
-        )
-    else:
-        bot.send_message(message.chat.id, "❌ Ошибка при получении данных профиля")
+            bot.send_message(
+                message.chat.id,
+                f"🏠 Ваш профиль:\nФИО: {name}\nКвартира: {apartment}\n"
+                f"Счётчиков воды: {water_count}\n"
+                f"Счетчик электричества: {rate}",
+                reply_markup=markup
+            )
+        else:
+            bot.send_message(message.chat.id, "❌ Ошибка при получении данных профиля")
+
+    except Exception as e:
+        logger.error(f"Ошибка в account: {e}", exc_info=True)
+        try:
+            bot.send_message(message.chat.id, "❌ Произошла ошибка. Попробуйте позже.")
+        except:
+            pass
+        handle_error(e)
 
 
 # Обработчики для каждой кнопки
 @bot.callback_query_handler(func=lambda call: call.data.startswith('edit_name_'))
 def edit_name(call):
     """Обработка кнопки изменения ФИО"""
-    telegram_id = int(call.data.split('_')[2])
-    if call.from_user.id != telegram_id:
-        bot.answer_callback_query(call.id, "❌ Недостаточно прав", show_alert=True)
-        return
+    try:
+        telegram_id = int(call.data.split('_')[2])
+        if call.from_user.id != telegram_id:
+            bot.answer_callback_query(call.id, "❌ Недостаточно прав", show_alert=True)
+            return
 
-    bot.answer_callback_query(call.id)
-    msg = bot.send_message(call.message.chat.id, "Введите новое ФИО:")
-    bot.register_next_step_handler(msg, process_new_name, telegram_id)
+        bot.answer_callback_query(call.id)
+        msg = bot.send_message(call.message.chat.id, "Введите новое ФИО:")
+        bot.register_next_step_handler(msg, process_new_name, telegram_id)
+
+    except Exception as e:
+        logger.error(f"Ошибка в edit_name: {e}", exc_info=True)
+        try:
+            bot.answer_callback_query(call.id, "❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
+        except:
+            pass
+        handle_error(e)
 
 
 def process_new_name(message, telegram_id):
     """Обработка нового ФИО"""
-    if validate_russian_name(message.text):
-        update_values('users', {'name': message.text.strip()}, {'telegram_id': telegram_id})
-        bot.send_message(message.chat.id, "✅ ФИО успешно изменено")
+    try:
+        if validate_russian_name(message.text):
+            update_values('users', {'name': message.text.strip()}, {'telegram_id': telegram_id})
+            bot.send_message(message.chat.id, "✅ ФИО успешно изменено")
 
-    elif message.text.strip().lower() == '/cancel':
-        bot.send_message(message.chat.id, "❌ Действие отменено")
-        return
+        elif message.text.strip().lower() == '/cancel':
+            bot.send_message(message.chat.id, "❌ Действие отменено")
+            return
 
-    else:
-        msg = bot.send_message(message.chat.id, "❌ Неверный формат ФИО")
-        bot.register_next_step_handler(msg, process_new_name, telegram_id)
+        else:
+            msg = bot.send_message(message.chat.id, "❌ Неверный формат ФИО")
+            bot.register_next_step_handler(msg, process_new_name, telegram_id)
+
+    except Exception as e:
+        logger.error(f"Ошибка в process_new_name: {e}", exc_info=True)
+        try:
+            bot.send_message(message.chat.id, "❌ Произошла ошибка. Попробуйте позже.")
+        except:
+            pass
+        handle_error(e)
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('edit_apartment_'))
 def edit_apartment(call):
     """Обработка кнопки изменения квартиры"""
-    telegram_id = int(call.data.split('_')[2])
-    if call.from_user.id != telegram_id:
-        bot.answer_callback_query(call.id, "❌ Недостаточно прав", show_alert=True)
-        return
+    try:
+        telegram_id = int(call.data.split('_')[2])
+        if call.from_user.id != telegram_id:
+            bot.answer_callback_query(call.id, "❌ Недостаточно прав", show_alert=True)
+            return
 
-    bot.answer_callback_query(call.id)
-    msg = bot.send_message(call.message.chat.id, "Введите новый номер квартиры (1-150):")
-    bot.register_next_step_handler(msg, process_new_apartment, telegram_id)
+        bot.answer_callback_query(call.id)
+        msg = bot.send_message(call.message.chat.id, "Введите новый номер квартиры (1-150):")
+        bot.register_next_step_handler(msg, process_new_apartment, telegram_id)
+
+    except Exception as e:
+        logger.error(f"Ошибка в edit_apartment: {e}", exc_info=True)
+        try:
+            bot.answer_callback_query(call.id, "❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
+        except:
+            pass
+        handle_error(e)
 
 
 def process_new_apartment(message, telegram_id):
     """Обработка нового номера квартиры"""
-    if message.text.strip().lower() == '/cancel':
-        bot.send_message(message.chat.id, "❌ Действие отменено")
-        return
-
     try:
-        apartment = int(message.text)
-        if 1 <= apartment <= 150:
-            update_values('users', {'apartment': apartment}, {'telegram_id': telegram_id})
-            bot.send_message(message.chat.id, "✅ Номер квартиры изменен")
-        else:
-            msg = bot.send_message(message.chat.id, "❌ Номер должен быть от 1 до 150")
+        if message.text.strip().lower() == '/cancel':
+            bot.send_message(message.chat.id, "❌ Действие отменено")
+            return
+
+        try:
+            apartment = int(message.text)
+            if 1 <= apartment <= 150:
+                update_values('users', {'apartment': apartment}, {'telegram_id': telegram_id})
+                bot.send_message(message.chat.id, "✅ Номер квартиры изменен")
+            else:
+                msg = bot.send_message(message.chat.id, "❌ Номер должен быть от 1 до 150")
+                bot.register_next_step_handler(msg, process_new_apartment, telegram_id)
+        except ValueError:
+            msg = bot.send_message(message.chat.id, "❌ Введите число")
             bot.register_next_step_handler(msg, process_new_apartment, telegram_id)
-    except ValueError:
-        msg = bot.send_message(message.chat.id, "❌ Введите число")
-        bot.register_next_step_handler(msg, process_new_apartment, telegram_id)
+
+    except Exception as e:
+        logger.error(f"Ошибка в process_new_apartment: {e}", exc_info=True)
+        try:
+            bot.send_message(message.chat.id, "❌ Произошла ошибка. Попробуйте позже.")
+        except:
+            pass
+        handle_error(e)
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('edit_water_'))
 def edit_water(call):
     """Обработка кнопки изменения счетчиков воды"""
-    telegram_id = int(call.data.split('_')[2])
-    if call.from_user.id != telegram_id:
-        bot.answer_callback_query(call.id, "❌ Недостаточно прав", show_alert=True)
-        return
+    try:
+        telegram_id = int(call.data.split('_')[2])
+        if call.from_user.id != telegram_id:
+            bot.answer_callback_query(call.id, "❌ Недостаточно прав", show_alert=True)
+            return
 
-    bot.answer_callback_query(call.id)
-    msg = bot.send_message(
-        call.message.chat.id,
-        "Введите новое количество счетчиков холодной воды (1-3):\n"
-    )
-    bot.register_next_step_handler(msg, process_new_water, telegram_id)
+        bot.answer_callback_query(call.id)
+        msg = bot.send_message(
+            call.message.chat.id,
+            "Введите новое количество счетчиков холодной воды (1-3):\n"
+        )
+        bot.register_next_step_handler(msg, process_new_water, telegram_id)
+
+    except Exception as e:
+        logger.error(f"Ошибка в edit_water: {e}", exc_info=True)
+        try:
+            bot.answer_callback_query(call.id, "❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
+        except:
+            pass
+        handle_error(e)
 
 
 def process_new_water(message, telegram_id):
     """Обработка нового количества счетчиков воды"""
-    if message.text.strip().lower() == '/cancel':
-        bot.send_message(message.chat.id, "❌ Действие отменено")
-        return
-
     try:
-        water_count = int(message.text)
-        if 1 <= water_count <= 3:
-            update_values('users', {'water_count': water_count}, {'telegram_id': telegram_id})
-            bot.send_message(message.chat.id, f"✅ Количество счетчиков воды изменено")
-        else:
+        if message.text.strip().lower() == '/cancel':
+            bot.send_message(message.chat.id, "❌ Действие отменено")
+            return
+
+        try:
+            water_count = int(message.text)
+            if 1 <= water_count <= 3:
+                update_values('users', {'water_count': water_count}, {'telegram_id': telegram_id})
+                bot.send_message(message.chat.id, f"✅ Количество счетчиков воды изменено")
+            else:
+                msg = bot.send_message(message.chat.id, "❌ Введите число от 1 до 3")
+                bot.register_next_step_handler(msg, process_new_water, telegram_id)
+        except ValueError:
             msg = bot.send_message(message.chat.id, "❌ Введите число от 1 до 3")
             bot.register_next_step_handler(msg, process_new_water, telegram_id)
-    except ValueError:
-        msg = bot.send_message(message.chat.id, "❌ Введите число от 1 до 3")
-        bot.register_next_step_handler(msg, process_new_water, telegram_id)
+
+    except Exception as e:
+        logger.error(f"Ошибка в process_new_water: {e}", exc_info=True)
+        try:
+            bot.send_message(message.chat.id, "❌ Произошла ошибка. Попробуйте позже.")
+        except:
+            pass
+        handle_error(e)
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('edit_electric_'))
 def edit_electric(call):
     """Обработка кнопки изменения типа электросчетчика"""
-    telegram_id = int(call.data.split('_')[2])
-    if call.from_user.id != telegram_id:
-        bot.answer_callback_query(call.id, "❌ Недостаточно прав", show_alert=True)
-        return
+    try:
+        telegram_id = int(call.data.split('_')[2])
+        if call.from_user.id != telegram_id:
+            bot.answer_callback_query(call.id, "❌ Недостаточно прав", show_alert=True)
+            return
 
-    markup = types.InlineKeyboardMarkup()
-    markup.row(
-        types.InlineKeyboardButton('Однотарифный', callback_data=f'confirm_elec_1_{telegram_id}'),
-        types.InlineKeyboardButton('Двухтарифный', callback_data=f'confirm_elec_2_{telegram_id}')
-    )
+        markup = types.InlineKeyboardMarkup()
+        markup.row(
+            types.InlineKeyboardButton('Однотарифный', callback_data=f'confirm_elec_1_{telegram_id}'),
+            types.InlineKeyboardButton('Двухтарифный', callback_data=f'confirm_elec_2_{telegram_id}')
+        )
 
-    bot.answer_callback_query(call.id)
-    bot.send_message(
-        call.message.chat.id,
-        "Выберите тип счетчика электричества:",
-        reply_markup=markup
-    )
+        bot.answer_callback_query(call.id)
+        bot.send_message(
+            call.message.chat.id,
+            "Выберите тип счетчика электричества:",
+            reply_markup=markup
+        )
+
+    except Exception as e:
+        logger.error(f"Ошибка в edit_electric: {e}", exc_info=True)
+        try:
+            bot.answer_callback_query(call.id, "❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
+        except:
+            pass
+        handle_error(e)
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('confirm_elec_'))
 def confirm_electric(call):
     """Подтверждение изменения типа электросчетчика"""
-    parts = call.data.split('_')
-    elec_type = int(parts[2])
-    telegram_id = int(parts[3])
-
-    if call.from_user.id != telegram_id:
-        bot.answer_callback_query(call.id, "❌ Недостаточно прав", show_alert=True)
-        return
-
     try:
-        update_values('users', {'electricity_count': elec_type}, {'telegram_id': telegram_id})
-        bot.answer_callback_query(call.id)
-        bot.send_message(
-            call.message.chat.id,
-            f"✅ Тип электросчетчика изменен на {'однотарифный' if elec_type == 1 else 'двухтарифный'}"
-        )
+        parts = call.data.split('_')
+        elec_type = int(parts[2])
+        telegram_id = int(parts[3])
+
+        if call.from_user.id != telegram_id:
+            bot.answer_callback_query(call.id, "❌ Недостаточно прав", show_alert=True)
+            return
+
+        try:
+            update_values('users', {'electricity_count': elec_type}, {'telegram_id': telegram_id})
+            bot.answer_callback_query(call.id)
+            bot.send_message(
+                call.message.chat.id,
+                f"✅ Тип электросчетчика изменен на {'однотарифный' if elec_type == 1 else 'двухтарифный'}"
+            )
+        except Exception as e:
+            logger.error(f"Ошибка при изменении электросчетчика: {e}")
+            bot.answer_callback_query(call.id, "❌ Ошибка при изменении", show_alert=True)
+
     except Exception as e:
-        logger.error(f"Ошибка при изменении электросчетчика: {e}")
-        bot.answer_callback_query(call.id, "❌ Ошибка при изменении", show_alert=True)
+        logger.error(f"Ошибка в confirm_electric: {e}", exc_info=True)
+        try:
+            bot.answer_callback_query(call.id, "❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
+        except:
+            pass
+        handle_error(e)
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('delete_account_'))
 def delete_account_confirmation(call):
     """Подтверждение удаления аккаунта"""
-    telegram_id = int(call.data.split('_')[2])
-    if call.from_user.id != telegram_id:
-        bot.answer_callback_query(call.id, "❌ Недостаточно прав", show_alert=True)
-        return
+    try:
+        telegram_id = int(call.data.split('_')[2])
+        if call.from_user.id != telegram_id:
+            bot.answer_callback_query(call.id, "❌ Недостаточно прав", show_alert=True)
+            return
 
-    # Создаем клавиатуру подтверждения
-    markup = types.InlineKeyboardMarkup()
-    markup.row(
-        types.InlineKeyboardButton("✅ Да, удалить", callback_data=f'confirm_delete_{telegram_id}'),
-        types.InlineKeyboardButton("❌ Нет, отменить", callback_data=f'cancel_delete_{telegram_id}')
-    )
+        # Создаем клавиатуру подтверждения
+        markup = types.InlineKeyboardMarkup()
+        markup.row(
+            types.InlineKeyboardButton("✅ Да, удалить", callback_data=f'confirm_delete_{telegram_id}'),
+            types.InlineKeyboardButton("❌ Нет, отменить", callback_data=f'cancel_delete_{telegram_id}')
+        )
 
-    bot.answer_callback_query(call.id)
-    bot.send_message(
-        call.message.chat.id,
-        "⚠️ Вы уверены, что хотите удалить свой аккаунт?\n"
-        "Все ваши данные будут безвозвратно удалены!",
-        reply_markup=markup
-    )
+        bot.answer_callback_query(call.id)
+        bot.send_message(
+            call.message.chat.id,
+            "⚠️ Вы уверены, что хотите удалить свой аккаунт?\n"
+            "Все ваши данные будут безвозвратно удалены!",
+            reply_markup=markup
+        )
+
+    except Exception as e:
+        logger.error(f"Ошибка в delete_account_confirmation: {e}", exc_info=True)
+        try:
+            bot.answer_callback_query(call.id, "❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
+        except:
+            pass
+        handle_error(e)
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('confirm_delete_'))
 def delete_account(call):
     """Окончательное удаление аккаунта"""
-    telegram_id = int(call.data.split('_')[2])
-    if call.from_user.id != telegram_id:
-        bot.answer_callback_query(call.id, "❌ Недостаточно прав", show_alert=True)
-        return
-
     try:
-        # Удаляем из всех таблиц
-        delete_from_database('users', {'telegram_id': telegram_id})
-        delete_from_database('meters_data', {'telegram_id': telegram_id})
-        delete_from_database('appeals', {'sender_id': telegram_id})
+        telegram_id = int(call.data.split('_')[2])
+        if call.from_user.id != telegram_id:
+            bot.answer_callback_query(call.id, "❌ Недостаточно прав", show_alert=True)
+            return
 
-        bot.answer_callback_query(call.id, "✅ Аккаунт удален", show_alert=True)
-        bot.send_message(
-            call.message.chat.id,
-            "❌ Ваш аккаунт был удален. Для новой регистрации нажмите /start"
-        )
-        logger.info(f"Пользователь {telegram_id} удалил аккаунт")
+        try:
+            # Удаляем из всех таблиц
+            delete_from_database('users', {'telegram_id': telegram_id})
+            delete_from_database('meters_data', {'telegram_id': telegram_id})
+            delete_from_database('appeals', {'sender_id': telegram_id})
+
+            bot.answer_callback_query(call.id, "✅ Аккаунт удален", show_alert=True)
+            bot.send_message(
+                call.message.chat.id,
+                "❌ Ваш аккаунт был удален. Для новой регистрации нажмите /start"
+            )
+            logger.info(f"Пользователь {telegram_id} удалил аккаунт")
+
+        except Exception as e:
+            logger.error(f"Ошибка при удалении аккаунта {telegram_id}: {e}")
+            bot.answer_callback_query(call.id, "❌ Ошибка при удалении", show_alert=True)
 
     except Exception as e:
-        logger.error(f"Ошибка при удалении аккаунта {telegram_id}: {e}")
-        bot.answer_callback_query(call.id, "❌ Ошибка при удалении", show_alert=True)
+        logger.error(f"Ошибка в  delete_account: {e}", exc_info=True)
+        try:
+            bot.answer_callback_query(call.id, "❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
+        except:
+            pass
+        handle_error(e)
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('cancel_delete_'))
 def cancel_delete(call):
     """Отмена удаления аккаунта"""
-    telegram_id = int(call.data.split('_')[2])
-    bot.answer_callback_query(call.id, "❎ Удаление отменено")
-    bot.send_message(call.message.chat.id, "Удаление аккаунта отменено")
+    try:
+        telegram_id = int(call.data.split('_')[2])
+        bot.answer_callback_query(call.id, "❎ Удаление отменено")
+        bot.send_message(call.message.chat.id, "Удаление аккаунта отменено")
+
+    except Exception as e:
+        logger.error(f"Ошибка в cancel_delete: {e}", exc_info=True)
+        try:
+            bot.answer_callback_query(call.id, "❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
+        except:
+            pass
+        handle_error(e)
 
 
 @bot.message_handler(commands=['auth'])
@@ -505,30 +690,47 @@ def auth(message):
     :param message: Сообщение от пользователя - команда /auth
     :return: None
     """
+    try:
+        # Проверка регистрации пользователя
+        if find_user_by_id('users', message.from_user.id) is None:
+            msg = bot.send_message(message.chat.id, "Введите код доступа")
+            bot.register_next_step_handler(msg, add_enter_code)
+            return
 
-    # Проверка регистрации пользователя
-    if find_user_by_id('users', message.from_user.id) is None:
-        msg = bot.send_message(message.chat.id, "Введите код доступа")
-        bot.register_next_step_handler(msg, add_enter_code)
-        return
+        msg = bot.send_message(message.chat.id, 'Введите код авторизации')
+        bot.register_next_step_handler(msg, enter_auth_code)
 
-    msg = bot.send_message(message.chat.id, 'Введите код авторизации')
-    bot.register_next_step_handler(msg, enter_auth_code)
+    except Exception as e:
+        logger.error(f"Ошибка в auth: {e}", exc_info=True)
+        try:
+            bot.send_message(message.chat.id, "❌ Произошла ошибка. Попробуйте позже.")
+        except:
+            pass
+        handle_error(e)
 
 
 def add_enter_code(message):
-    code = message.text
-    if code == PASSWORD:
-        msg = bot.send_message(message.chat.id, "Bведите код авторизации")
-        bot.register_next_step_handler(msg, enter_auth_code)
+    try:
+        code = message.text
+        if code == PASSWORD:
+            msg = bot.send_message(message.chat.id, "Bведите код авторизации")
+            bot.register_next_step_handler(msg, enter_auth_code)
 
-    elif message.text.strip().lower() == '/cancel':
-        bot.send_message(message.chat.id, "❌ Действие отменено")
-        return
+        elif message.text.strip().lower() == '/cancel':
+            bot.send_message(message.chat.id, "❌ Действие отменено")
+            return
 
-    else:
-        msg = bot.send_message(message.chat.id, "❌ Неверный пароль. Попробуйте еще раз:")
-        bot.register_next_step_handler(msg, add_enter_code)  # Снова вызываем проверку пароля
+        else:
+            msg = bot.send_message(message.chat.id, "❌ Неверный пароль. Попробуйте еще раз:")
+            bot.register_next_step_handler(msg, add_enter_code)  # Снова вызываем проверку пароля
+
+    except Exception as e:
+        logger.error(f"Ошибка в add_enter_code: {e}", exc_info=True)
+        try:
+            bot.send_message(message.chat.id, "❌ Произошла ошибка. Попробуйте позже.")
+        except:
+            pass
+        handle_error(e)
 
 
 def enter_auth_code(message):
@@ -537,35 +739,44 @@ def enter_auth_code(message):
     :param message: Сообщение от пользователя - код авторицации
     :return: None
     """
-    if message.text.strip().lower() == '/cancel':
-        bot.send_message(message.chat.id, "❌ Действие отменено")
-        return
-
-    user_id = message.from_user.id
-    user_name = f'{message.from_user.first_name or ""} {message.from_user.last_name or ""}'
-    auth_code = message.text.strip()
-
-    # Получение кода авторизации из БД
-    staff_list = select_all('staff')
-    for post in staff_list:
-        staff_post = post[1]
-        code = post[4]
-        if auth_code == code:
-            update_values('staff',
-                          {'telegram_id': user_id, 'name': user_name},
-                          {'auth_code': auth_code}
-                          )
-            bot.send_message(message.chat.id, f'Вы успешно авторизованы как {staff_post}')
-            logger.info(f'Пользоватлеь {message.chat.id} авторизован как {staff_post}')
-            bot.send_message(find_staff_id('Админ'),
-                             f"⚠️Пользователь {message.from_user.id}: {message.from_user.first_name} {message.from_user.last_name} авторизован как {staff_post}")
+    try:
+        if message.text.strip().lower() == '/cancel':
+            bot.send_message(message.chat.id, "❌ Действие отменено")
             return
+
+        user_id = message.from_user.id
+        user_name = f'{message.from_user.first_name or ""} {message.from_user.last_name or ""}'
+        auth_code = message.text.strip()
+
+        # Получение кода авторизации из БД
+        staff_list = select_all('staff')
+        for post in staff_list:
+            staff_post = post[1]
+            code = post[4]
+            if auth_code == code:
+                update_values('staff',
+                              {'telegram_id': user_id, 'name': user_name},
+                              {'auth_code': auth_code}
+                              )
+                bot.send_message(message.chat.id, f'Вы успешно авторизованы как {staff_post}')
+                logger.info(f'Пользоватлеь {message.chat.id} авторизован как {staff_post}')
+                bot.send_message(find_staff_id('Админ'),
+                                 f"⚠️Пользователь {message.from_user.id}: {message.from_user.first_name} {message.from_user.last_name} авторизован как {staff_post}")
+                return
+            else:
+                continue
         else:
-            continue
-    else:
-        msg = bot.send_message(message.chat.id, "Неверный код авторизации")
-        logger.info(f'Пользователь {message.from_user.id} ввел неверный код авторизации')
-        bot.register_next_step_handler(msg, enter_auth_code)
+            msg = bot.send_message(message.chat.id, "Неверный код авторизации")
+            logger.info(f'Пользователь {message.from_user.id} ввел неверный код авторизации')
+            bot.register_next_step_handler(msg, enter_auth_code)
+
+    except Exception as e:
+        logger.error(f"Ошибка в enter_auth_code: {e}", exc_info=True)
+        try:
+            bot.send_message(message.chat.id, "❌ Произошла ошибка. Попробуйте позже.")
+        except:
+            pass
+        handle_error(e)
 
 
 @bot.message_handler(commands=['send'])
@@ -575,41 +786,50 @@ def send_data(message):
     :param message: Сообщение от пользователя - команда /send
     :return: None
     """
-    # Проверка времени отправки
-    if not (start_collection[0] <= now.day <= end_collection[0] and
-            not (now.day == end_collection[0] and
-                 (now.hour > end_collection[1] or
-                  (now.hour == end_collection[1] and now.minute > end_collection[2])))):
-        bot.send_message(message.chat.id,
-                         "❌ Прием показаний закрыт. Показания принимаются с 23 по 27 число каждого месяца")
-        return
-
-    # Проверка того, что пользователь еще не отправлял показания в этом месяце
-    telegram_id = message.from_user.id
-    user = find_user_by_id('meters_data', telegram_id)
-    if user:
-        bot.send_message(message.chat.id, '✅ Вы уже передали показания в этом месяце')
-        return
-
-    # Проверка зарегистрирован ли пользователь
-    if telegram_id in temp_users:
-        user = temp_users[telegram_id]
-    else:
-        # Пользователь не зарегистрирован
-        user_data = find_user_by_id('users', telegram_id, 'apartment, water_count, electricity_count')
-        if not user_data:
-            bot.send_message(message.chat.id, "❌ Вы не зарегистрированы. Для начала нажмите /start")
+    try:
+        # Проверка времени отправки
+        if not (start_collection[0] <= now.day <= end_collection[0] and
+                not (now.day == end_collection[0] and
+                     (now.hour > end_collection[1] or
+                      (now.hour == end_collection[1] and now.minute > end_collection[2])))):
+            bot.send_message(message.chat.id,
+                             "❌ Прием показаний закрыт. Показания принимаются с 23 по 27 число каждого месяца")
             return
 
-        # Пользователь зарегистрирован. Принимаем данные
-        apartment, water_count, electricity_count = user_data
-        user = User(telegram_id, apartment, water_count, electricity_count)
-        temp_users[telegram_id] = user
+        # Проверка того, что пользователь еще не отправлял показания в этом месяце
+        telegram_id = message.from_user.id
+        user = find_user_by_id('meters_data', telegram_id)
+        if user:
+            bot.send_message(message.chat.id, '✅ Вы уже передали показания в этом месяце')
+            return
 
-    # Кнопки для вывбора счетчика
-    month, year = get_month()
-    markup = create_meters_markup(user)
-    bot.send_message(message.chat.id, f"📊 Показания за {month} {year}", reply_markup=markup)
+        # Проверка зарегистрирован ли пользователь
+        if telegram_id in temp_users:
+            user = temp_users[telegram_id]
+        else:
+            # Пользователь не зарегистрирован
+            user_data = find_user_by_id('users', telegram_id, 'apartment, water_count, electricity_count')
+            if not user_data:
+                bot.send_message(message.chat.id, "❌ Вы не зарегистрированы. Для начала нажмите /start")
+                return
+
+            # Пользователь зарегистрирован. Принимаем данные
+            apartment, water_count, electricity_count = user_data
+            user = User(telegram_id, apartment, water_count, electricity_count)
+            temp_users[telegram_id] = user
+
+        # Кнопки для вывбора счетчика
+        month, year = get_month()
+        markup = create_meters_markup(user)
+        bot.send_message(message.chat.id, f"📊 Показания за {month} {year}", reply_markup=markup)
+
+    except Exception as e:
+        logger.error(f"Ошибка в send_data: {e}", exc_info=True)
+        try:
+            bot.send_message(message.chat.id, "❌ Произошла ошибка. Попробуйте позже.")
+        except:
+            pass
+        handle_error(e)
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('meter_'))
@@ -619,11 +839,20 @@ def meter_input(call):
     :param call: Вызов функции для конкретного счетчика
     :return: None
     """
-    # Ввод показаний для выбранного счетчика
-    meter = call.data.split('_')[1]
-    current_editing[call.from_user.id] = meter
-    msg = bot.send_message(call.message.chat.id, f"Введите показания для выбранного счетчика:")
-    bot.register_next_step_handler(msg, process_value)
+    try:
+        # Ввод показаний для выбранного счетчика
+        meter = call.data.split('_')[1]
+        current_editing[call.from_user.id] = meter
+        msg = bot.send_message(call.message.chat.id, f"Введите показания для выбранного счетчика:")
+        bot.register_next_step_handler(msg, process_value)
+
+    except Exception as e:
+        logger.error(f"Ошибка в meter_input: {e}", exc_info=True)
+        try:
+            bot.answer_callback_query(call.id, "❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
+        except:
+            pass
+        handle_error(e)
 
 
 def process_value(message):
@@ -632,31 +861,40 @@ def process_value(message):
     :param message: Сообщение от пользователя - целое число
     :return: None
     """
-    telegram_id = message.from_user.id
-    user = temp_users.get(telegram_id)
-    meter = current_editing.get(telegram_id)
-
-    # Проверка на наличие ошибки
-    if not user or not meter:
-        bot.send_message(message.chat.id, "Ошибка: пользователь или счётчик не найдены")
-        return
-
-    # Проверка корректности ввода
     try:
-        value = int(message.text.strip())
-        if value < 0:
-            raise ValueError
-    except:
-        msg = bot.send_message(message.chat.id, "❌ Введите положительное число")
-        bot.register_next_step_handler(msg, process_value)
-        return
+        telegram_id = message.from_user.id
+        user = temp_users.get(telegram_id)
+        meter = current_editing.get(telegram_id)
 
-    # Ввод данных
-    user.add_metric(meter, value)
-    # Создание нового сообщения с кнопками
-    month, year = get_month()
-    markup = create_meters_markup(user)
-    bot.send_message(message.chat.id, f"📊 Показания за {month} {year}", reply_markup=markup)
+        # Проверка на наличие ошибки
+        if not user or not meter:
+            bot.send_message(message.chat.id, "Ошибка: пользователь или счётчик не найдены")
+            return
+
+        # Проверка корректности ввода
+        try:
+            value = int(message.text.strip())
+            if value < 0:
+                raise ValueError
+        except:
+            msg = bot.send_message(message.chat.id, "❌ Введите положительное число")
+            bot.register_next_step_handler(msg, process_value)
+            return
+
+        # Ввод данных
+        user.add_metric(meter, value)
+        # Создание нового сообщения с кнопками
+        month, year = get_month()
+        markup = create_meters_markup(user)
+        bot.send_message(message.chat.id, f"📊 Показания за {month} {year}", reply_markup=markup)
+
+    except Exception as e:
+        logger.error(f"Ошибка в process_value: {e}", exc_info=True)
+        try:
+            bot.send_message(message.chat.id, "❌ Произошла ошибка. Попробуйте позже.")
+        except:
+            pass
+        handle_error(e)
 
 
 @bot.callback_query_handler(func=lambda call: call.data == 'review')
@@ -666,17 +904,25 @@ def review(call):
     :param call: Вызов функции с требованием проверки данных
     :return: None
     """
-    # Проверка наличия пользователя
-    user = temp_users.get(call.from_user.id)
-    if not user:
-        bot.send_message(call.message.chat.id, "Ошибка: пользователь не найден")
-        return
+    try:
+        # Проверка наличия пользователя
+        user = temp_users.get(call.from_user.id)
+        if not user:
+            bot.send_message(call.message.chat.id, "Ошибка: пользователь не найден")
+            return
 
-    # Создание сообщения с проверкой
-    markup = create_review_markup(user)
-    month, year = get_month()
-    bot.send_message(call.message.chat.id, f"📝 Проверка за {month} {year}", reply_markup=markup)
+        # Создание сообщения с проверкой
+        markup = create_review_markup(user)
+        month, year = get_month()
+        bot.send_message(call.message.chat.id, f"📝 Проверка за {month} {year}", reply_markup=markup)
 
+    except Exception as e:
+        logger.error(f"Ошибка в review: {e}", exc_info=True)
+        try:
+            bot.answer_callback_query(call.id, "❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
+        except:
+            pass
+        handle_error(e)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('edit_'))
 def edit_value(call):
@@ -685,12 +931,20 @@ def edit_value(call):
     :param call: Вызов функции с требованием изменить ранее введенные значения
     :return: None
     """
+    try:
     # Корректировка значений
-    meter = call.data.split('_')[1]
-    current_editing[call.from_user.id] = meter
-    msg = bot.send_message(call.message.chat.id, f"Введите новое значение для выбранного счетчика")
-    bot.register_next_step_handler(msg, process_value)
+        meter = call.data.split('_')[1]
+        current_editing[call.from_user.id] = meter
+        msg = bot.send_message(call.message.chat.id, f"Введите новое значение для выбранного счетчика")
+        bot.register_next_step_handler(msg, process_value)
 
+    except Exception as e:
+        logger.error(f"Ошибка в edit_value: {e}", exc_info=True)
+        try:
+            bot.answer_callback_query(call.id, "❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
+        except:
+            pass
+        handle_error(e)
 
 @bot.callback_query_handler(func=lambda call: call.data == 'confirm_all')
 def confirm_all(call):
@@ -699,66 +953,74 @@ def confirm_all(call):
     :param call: вызов функции с требованием записать данные
     :return: None
     """
-    # Проверка существования пользователя
-    user = temp_users.get(call.from_user.id)
-    if not user:
-        bot.send_message(call.message.chat.id, "Ошибка: пользователь не найден")
-        return
+    try:
+        # Проверка существования пользователя
+        user = temp_users.get(call.from_user.id)
+        if not user:
+            bot.send_message(call.message.chat.id, "Ошибка: пользователь не найден")
+            return
 
-    # Получение отчета
-    report = user.get_report()
+        # Получение отчета
+        report = user.get_report()
 
-    # Получаем имена счетчиков
-    cold_list = cold_water_meters[user.water_count]
-    hot_list = hot_water_meters[user.water_count]
-    elec_list = electricity_meters[user.electricity_type]
+        # Получаем имена счетчиков
+        cold_list = cold_water_meters[user.water_count]
+        hot_list = hot_water_meters[user.water_count]
+        elec_list = electricity_meters[user.electricity_type]
 
-    # Получаем показания из current_meters
-    data = current_meters.get(user.telegram_id, {})
-    # ХВС
-    cw1 = int(data.get(cold_list[0], 0)) if len(cold_list) > 0 else 0
-    cw2 = int(data.get(cold_list[1], 0)) if len(cold_list) > 1 else 0
-    cw3 = int(data.get(cold_list[2], 0)) if len(cold_list) > 2 else 0
+        # Получаем показания из current_meters
+        data = current_meters.get(user.telegram_id, {})
+        # ХВС
+        cw1 = int(data.get(cold_list[0], 0)) if len(cold_list) > 0 else 0
+        cw2 = int(data.get(cold_list[1], 0)) if len(cold_list) > 1 else 0
+        cw3 = int(data.get(cold_list[2], 0)) if len(cold_list) > 2 else 0
 
-    # ГВС
-    hw1 = int(data.get(hot_list[0], 0)) if len(hot_list) > 0 else 0
-    hw2 = int(data.get(hot_list[1], 0)) if len(hot_list) > 1 else 0
-    hw3 = int(data.get(hot_list[2], 0)) if len(hot_list) > 2 else 0
+        # ГВС
+        hw1 = int(data.get(hot_list[0], 0)) if len(hot_list) > 0 else 0
+        hw2 = int(data.get(hot_list[1], 0)) if len(hot_list) > 1 else 0
+        hw3 = int(data.get(hot_list[2], 0)) if len(hot_list) > 2 else 0
 
-    # Электричество
-    el1 = int(data.get(elec_list[0], 0)) if len(elec_list) > 0 else 0
-    el2 = int(data.get(elec_list[1], 0)) if len(elec_list) > 1 else 0
+        # Электричество
+        el1 = int(data.get(elec_list[0], 0)) if len(elec_list) > 0 else 0
+        el2 = int(data.get(elec_list[1], 0)) if len(elec_list) > 1 else 0
 
-    month = now.strftime('%m.%Y')
+        month = now.strftime('%m.%Y')
 
-    # Вставляем данные
-    columns = [
-        'telegram_id', 'apartment', 'month',
-        'type_water_meter', 'type_electricity_meter',
-        'cold_water_1', 'cold_water_2', 'cold_water_3',
-        'hot_water_1', 'hot_water_2', 'hot_water_3',
-        'electricity_1', 'electricity_2'
-    ]
-    values = [
-        user.telegram_id,
-        user.apartment,
-        month,
-        user.water_count,
-        user.electricity_type,
-        cw1, cw2, cw3,
-        hw1, hw2, hw3,
-        el1, el2
-    ]
-    insert_to_database('meters_data', columns, values)
+        # Вставляем данные
+        columns = [
+            'telegram_id', 'apartment', 'month',
+            'type_water_meter', 'type_electricity_meter',
+            'cold_water_1', 'cold_water_2', 'cold_water_3',
+            'hot_water_1', 'hot_water_2', 'hot_water_3',
+            'electricity_1', 'electricity_2'
+        ]
+        values = [
+            user.telegram_id,
+            user.apartment,
+            month,
+            user.water_count,
+            user.electricity_type,
+            cw1, cw2, cw3,
+            hw1, hw2, hw3,
+            el1, el2
+        ]
+        insert_to_database('meters_data', columns, values)
 
-    # Отправка отчета
-    ACCOUNTANT_ID = find_staff_id('Бухгалтер')
-    bot.send_message(ACCOUNTANT_ID, f"📨 Показания от кв. {user.apartment}:\n{report}")
-    user.clear_metrics()
-    temp_users.pop(call.from_user.id, None)
-    bot.send_message(call.message.chat.id, "✅ Показания отправлены")
-    logger.info(f'Показания переданы. Квартира {user.apartment}')
+        # Отправка отчета
+        ACCOUNTANT_ID = find_staff_id('Бухгалтер')
+        bot.send_message(ACCOUNTANT_ID, f"📨 Показания от кв. {user.apartment}:\n{report}")
+        user.clear_metrics()
+        temp_users.pop(call.from_user.id, None)
+        bot.send_message(call.message.chat.id, "✅ Показания отправлены")
+        logger.info(f'Показания переданы. Квартира {user.apartment}')
 
+    except Exception as e:
+        logger.error(f"Ошибка в confirm_all: {e}", exc_info=True)
+        try:
+            bot.answer_callback_query(call.id, "❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
+        except:
+            pass
+        handle_error(e)
 
 @bot.callback_query_handler(func=lambda call: call.data == 'back_edit')
 def back_edit(call):
@@ -767,17 +1029,25 @@ def back_edit(call):
     :param call: вызов функции с требованием редактирования данных
     :return: None
     """
-    # Проверка существования пользователя
-    user = temp_users.get(call.from_user.id)
-    if not user:
-        bot.send_message(call.message.chat.id, "Ошибка: пользователь не найден")
-        return
+    try:
+        # Проверка существования пользователя
+        user = temp_users.get(call.from_user.id)
+        if not user:
+            bot.send_message(call.message.chat.id, "Ошибка: пользователь не найден")
+            return
 
-    # Создание сообщения с кнопками
-    markup = create_meters_markup(user)
-    month, year = get_month()
-    bot.send_message(call.message.chat.id, f"📊 Возврат к редактированию за {month} {year}", reply_markup=markup)
+        # Создание сообщения с кнопками
+        markup = create_meters_markup(user)
+        month, year = get_month()
+        bot.send_message(call.message.chat.id, f"📊 Возврат к редактированию за {month} {year}", reply_markup=markup)
 
+    except Exception as e:
+        logger.error(f"Ошибка в back_edit: {e}", exc_info=True)
+        try:
+            bot.answer_callback_query(call.id, "❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
+        except:
+            pass
+        handle_error(e)
 
 @bot.callback_query_handler(func=lambda call: call.data == 'cancel')
 def cancel(call):
@@ -786,13 +1056,22 @@ def cancel(call):
     :param call: Вызов функции с требованием отмены ввода показаний
     :return: None
     """
-    # Отмена ввода
-    user = temp_users.get(call.from_user.id)
-    if user:
-        user.clear_metrics()
-        temp_users.pop(call.from_user.id, None)
+    try:
+        # Отмена ввода
+        user = temp_users.get(call.from_user.id)
+        if user:
+            user.clear_metrics()
+            temp_users.pop(call.from_user.id, None)
 
-    bot.send_message(call.message.chat.id, "🚫 Ввод отменён")
+        bot.send_message(call.message.chat.id, "🚫 Ввод отменён")
+
+    except Exception as e:
+        logger.error(f"Ошибка в cancel: {e}", exc_info=True)
+        try:
+            bot.answer_callback_query(call.id, "❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
+        except:
+            pass
+        handle_error(e)
 
 
 @bot.message_handler(commands=['manager', 'accountant', 'electric', 'plumber'])
@@ -802,56 +1081,63 @@ def handle_address_request(message):
     :param message: Сообщение от польщователя - команда, соотвествующая получателю обращения
     :return: None
     """
+    try:
+        # Проверка регистрации пользователя
+        if find_user_by_id('users', message.from_user.id) is None:
+            bot.send_message(message.chat.id, "Вы не зарегистрированы. Чтобы начать работу введите /start")
+            return
 
-    # Проверка регистрации пользователя
-    if find_user_by_id('users', message.from_user.id) is None:
-        bot.send_message(message.chat.id, "Вы не зарегистрированы. Чтобы начать работу введите /start")
-        return
-
-    # Определяем тип получателя и текст запроса
-    command = message.text.split('@')[0]
-    MANAGER_ID = find_staff_id('Председатель')
-    ACCOUNTANT_ID = find_staff_id('Бухгалтер')
-    PLUMBER_ID = find_staff_id('Сантехник')
-    ELECTRIC_ID = find_staff_id('Электрик')
-    recipient_data = {
-        '/manager': {
-            'id': MANAGER_ID,
-            'request_text': "✉️ Напишите своё обращение к председателю ТСЖ",
-            'recipient': "Председатель",
-            'message_type': 'Обращение председателю',
-            'response_success': "✅ Обращение успешно отправлено председателю",
-            'answer_text': 'Ответ председателя ТСЖ на ваше обращение'
-        },
-        '/accountant': {
-            'id': ACCOUNTANT_ID,
-            'request_text': "✉️ Напишите своё обращение к бухгалтеру",
-            'recipient': "Бухгалтер",
-            'message_type': 'Обращение бухгалтеру',
-            'response_success': "✅ Обращение успешно отправлено бухгалтеру",
-            'answer_text': 'Ответ бухгалтера на ваше обращение'
-        },
-        '/electric': {
-            'id': ELECTRIC_ID,
-            'request_text': "✉️ Напишите текст заявки на работу электрика",
-            'recipient': "Электрик",
-            'message_type': 'Заявка на работу слектрика',
-            'response_success': "✅ Заявка на работу электрика успешно отправлена",
-            'answer_text': 'Ответ электрика на ваше обращение'
-        },
-        '/plumber': {
-            'id': PLUMBER_ID,
-            'request_text': "✉️ Напишите текст заявки на работу сантехника",
-            'recipient': "Сантехник",
-            'message_type': 'Заявка на работу сантехника',
-            'response_success': "✅ Заявка на работу сантехника успешно отправлена",
-            'answer_text': 'Ответ сантехника на ваше обращение'
+        # Определяем тип получателя и текст запроса
+        command = message.text.split('@')[0]
+        MANAGER_ID = find_staff_id('Председатель')
+        ACCOUNTANT_ID = find_staff_id('Бухгалтер')
+        PLUMBER_ID = find_staff_id('Сантехник')
+        ELECTRIC_ID = find_staff_id('Электрик')
+        recipient_data = {
+            '/manager': {
+                'id': MANAGER_ID,
+                'request_text': "✉️ Напишите своё обращение к председателю ТСЖ",
+                'recipient': "Председатель",
+                'message_type': 'Обращение председателю',
+                'response_success': "✅ Обращение успешно отправлено председателю",
+                'answer_text': 'Ответ председателя ТСЖ на ваше обращение'
+            },
+            '/accountant': {
+                'id': ACCOUNTANT_ID,
+                'request_text': "✉️ Напишите своё обращение к бухгалтеру",
+                'recipient': "Бухгалтер",
+                'message_type': 'Обращение бухгалтеру',
+                'response_success': "✅ Обращение успешно отправлено бухгалтеру",
+                'answer_text': 'Ответ бухгалтера на ваше обращение'
+            },
+            '/electric': {
+                'id': ELECTRIC_ID,
+                'request_text': "✉️ Напишите текст заявки на работу электрика",
+                'recipient': "Электрик",
+                'message_type': 'Заявка на работу слектрика',
+                'response_success': "✅ Заявка на работу электрика успешно отправлена",
+                'answer_text': 'Ответ электрика на ваше обращение'
+            },
+            '/plumber': {
+                'id': PLUMBER_ID,
+                'request_text': "✉️ Напишите текст заявки на работу сантехника",
+                'recipient': "Сантехник",
+                'message_type': 'Заявка на работу сантехника',
+                'response_success': "✅ Заявка на работу сантехника успешно отправлена",
+                'answer_text': 'Ответ сантехника на ваше обращение'
+            }
         }
-    }
 
-    msg = bot.send_message(message.chat.id, recipient_data[command]['request_text'])
-    bot.register_next_step_handler(msg, lambda m: send_address(m, recipient_data[command]))
+        msg = bot.send_message(message.chat.id, recipient_data[command]['request_text'])
+        bot.register_next_step_handler(msg, lambda m: send_address(m, recipient_data[command]))
 
+    except Exception as e:
+        logger.error(f"Ошибка в handle_address_request: {e}", exc_info=True)
+        try:
+            bot.send_message(message.chat.id, "❌ Произошла ошибка. Попробуйте позже.")
+        except:
+            pass
+        handle_error(e)
 
 def send_address(message, recipient_info):
     """
@@ -860,84 +1146,92 @@ def send_address(message, recipient_info):
     :param recipient_info: Информация о получателе обращения
     :return: None
     """
-    global appeals_count
-    text = message.text.strip() if message.text else ""
-    sender_id = message.from_user.id
-
-    # Получаем данные пользователя
-    data = find_user_by_id('users', sender_id, 'name, apartment')
-    if not data:
-        bot.send_message(message.chat.id, "❌ Ошибка: данные пользователя не найдены")
-        return
-
-    user_name, apartment = data
-
-    # Вставляем обращение в БД и получаем его ID
     try:
-        conn = sqlite3.connect(db)
-        cur = conn.cursor()
-        cur.execute(
-            "INSERT INTO appeals (sender_id, apartment, name, message_text, recipient_post) VALUES (?, ?, ?, ?, ?)",
-            (sender_id, apartment, user_name, text, recipient_info['recipient'])
-        )
-        appeal_id = cur.lastrowid
-        conn.commit()
+        global appeals_count
+        text = message.text.strip() if message.text else ""
+        sender_id = message.from_user.id
 
-        # Обновляем счетчик обращений
-        appeals_count += 1
-        with open('count.txt', 'w') as file:
-            file.write(str(appeals_count))
+        # Получаем данные пользователя
+        data = find_user_by_id('users', sender_id, 'name, apartment')
+        if not data:
+            bot.send_message(message.chat.id, "❌ Ошибка: данные пользователя не найдены")
+            return
 
-    except Exception as e:
-        logger.error(f"Ошибка при записи обращения: {e}")
-        bot.send_message(message.chat.id, "❌ Ошибка при отправке обращения")
-        return
-    finally:
-        if 'cur' in locals():
-            cur.close()
-        if 'conn' in locals():
-            conn.close()
+        user_name, apartment = data
 
-    # Кнопка отправки сообщения
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton(
-        "Ответить",
-        callback_data=f"reply_{sender_id}_{message.message_id}_{appeal_id}"
-    ))
+        # Вставляем обращение в БД и получаем его ID
+        try:
+            conn = sqlite3.connect(db)
+            cur = conn.cursor()
+            cur.execute(
+                "INSERT INTO appeals (sender_id, apartment, name, message_text, recipient_post) VALUES (?, ?, ?, ?, ?)",
+                (sender_id, apartment, user_name, text, recipient_info['recipient'])
+            )
+            appeal_id = cur.lastrowid
+            conn.commit()
 
-    # Формируем и отправляем сообщение
-    bot.send_message(
-        recipient_info['id'],
-        f'📨 Обращение от жителя:\n'
-        f'👤 [{user_name}](tg://user?id={sender_id})\n'
-        f'🏠 Квартира: {apartment}\n\n'
-        f'_{text}_',
-        parse_mode="Markdown",
-        reply_markup=markup
-    )
+            # Обновляем счетчик обращений
+            appeals_count += 1
+            with open('count.txt', 'w') as file:
+                file.write(str(appeals_count))
 
-    # Сохраняем данные диалога
-    active_dialogs[recipient_info['id']] = {
-        'user_id': sender_id,
-        'message_id': message.message_id,
-        'appeal_id': appeal_id
-    }
+        except Exception as e:
+            logger.error(f"Ошибка при записи обращения: {e}")
+            bot.send_message(message.chat.id, "❌ Ошибка при отправке обращения")
+            return
+        finally:
+            if 'cur' in locals():
+                cur.close()
+            if 'conn' in locals():
+                conn.close()
 
-    # Отправка копии председателю (если получатель не председатель)
-    if recipient_info['id'] != find_staff_id('Председатель'):
+        # Кнопка отправки сообщения
+        markup = types.InlineKeyboardMarkup()
+        markup.add(types.InlineKeyboardButton(
+            "Ответить",
+            callback_data=f"reply_{sender_id}_{message.message_id}_{appeal_id}"
+        ))
+
+        # Формируем и отправляем сообщение
         bot.send_message(
-            find_staff_id('Председатель'),
+            recipient_info['id'],
             f'📨 Обращение от жителя:\n'
-            f'‍💻 Получатель: {recipient_info["recipient"]}\n'
-            f'👤 Отправитель: [{user_name}](tg://user?id={sender_id})\n'
+            f'👤 [{user_name}](tg://user?id={sender_id})\n'
             f'🏠 Квартира: {apartment}\n\n'
             f'_{text}_',
             parse_mode="Markdown",
+            reply_markup=markup
         )
 
-    logger.info(f"Отправлено обращение от пользователя {sender_id}. Получатель {recipient_info['recipient']}")
-    bot.send_message(message.chat.id, recipient_info['response_success'])
+        # Сохраняем данные диалога
+        active_dialogs[recipient_info['id']] = {
+            'user_id': sender_id,
+            'message_id': message.message_id,
+            'appeal_id': appeal_id
+        }
 
+        # Отправка копии председателю (если получатель не председатель)
+        if recipient_info['id'] != find_staff_id('Председатель'):
+            bot.send_message(
+                find_staff_id('Председатель'),
+                f'📨 Обращение от жителя:\n'
+                f'‍💻 Получатель: {recipient_info["recipient"]}\n'
+                f'👤 Отправитель: [{user_name}](tg://user?id={sender_id})\n'
+                f'🏠 Квартира: {apartment}\n\n'
+                f'_{text}_',
+                parse_mode="Markdown",
+            )
+
+        logger.info(f"Отправлено обращение от пользователя {sender_id}. Получатель {recipient_info['recipient']}")
+        bot.send_message(message.chat.id, recipient_info['response_success'])
+
+    except Exception as e:
+        logger.error(f"Ошибка в send_adress: {e}", exc_info=True)
+        try:
+            bot.send_message(message.chat.id, "❌ Произошла ошибка. Попробуйте позже.")
+        except:
+            pass
+        handle_error(e)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('reply_'))
 def start_staff_reply(call):
@@ -946,28 +1240,36 @@ def start_staff_reply(call):
     :param call: вызов функции с требованием ответа на обращение
     :return: None
     """
-    parts = call.data.split('_')
-    if len(parts) < 4:
-        bot.answer_callback_query(call.id, "❌ Ошибка: неверный формат запроса")
-        return
+    try:
+        parts = call.data.split('_')
+        if len(parts) < 4:
+            bot.answer_callback_query(call.id, "❌ Ошибка: неверный формат запроса")
+            return
 
-    user_id = int(parts[1])
-    message_id = int(parts[2])
-    appeal_id = int(parts[3])
+        user_id = int(parts[1])
+        message_id = int(parts[2])
+        appeal_id = int(parts[3])
 
-    # Сохраняем данные диалога
-    active_dialogs[call.from_user.id] = {
-        'user_id': user_id,
-        'message_id': message_id,
-        'appeal_id': appeal_id
-    }
+        # Сохраняем данные диалога
+        active_dialogs[call.from_user.id] = {
+            'user_id': user_id,
+            'message_id': message_id,
+            'appeal_id': appeal_id
+        }
 
-    bot.send_message(
-        call.from_user.id,
-        "✍️ Введите ваш ответ:",
-        reply_markup=types.ForceReply(selective=True)
-    )
+        bot.send_message(
+            call.from_user.id,
+            "✍️ Введите ваш ответ:",
+            reply_markup=types.ForceReply(selective=True)
+        )
 
+    except Exception as e:
+        logger.error(f"Ошибка в start_staff_reply: {e}", exc_info=True)
+        try:
+            bot.answer_callback_query(call.id, "❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
+        except:
+            pass
+        handle_error(e)
 
 @bot.message_handler(func=lambda m: m.reply_to_message and m.reply_to_message.text == "✍️ Введите ваш ответ:")
 def process_staff_reply(message):
@@ -976,72 +1278,79 @@ def process_staff_reply(message):
     :param message: Сообщение от сотрудника - ответ на обращение
     :return: None
     """
-    staff_id = message.from_user.id
-    if staff_id not in active_dialogs:
-        return
-
-    dialog_data = active_dialogs[staff_id]
-    user_id = dialog_data['user_id']
-    appeal_id = dialog_data['appeal_id']
-
-    MANAGER_ID = find_staff_id('Председатель')
-    ACCOUNTANT_ID = find_staff_id('Бухгалтер')
-    ELECTRIC_ID = find_staff_id('Электрик')
-    PLUMBER_ID = find_staff_id('Сантехник')
-
-    # Определяем должность отвечающего
-    if staff_id == MANAGER_ID:
-        staff_position = "председателя ТСЖ"
-    elif staff_id == ACCOUNTANT_ID:
-        staff_position = "бухгалтера"
-    elif staff_id == ELECTRIC_ID:
-        staff_position = "электрика"
-    elif staff_id == PLUMBER_ID:
-        staff_position = "сантехника"
-    else:
-        staff_position = "администрации"
-
-    # Формируем текст ответа
-    bot.send_message(user_id, f"📩 Ответ {staff_position} на ваше обращение:\n\n{message.text}")
-
-    # Обновляем обращение в БД
     try:
-        conn = sqlite3.connect(db)
-        cur = conn.cursor()
-        cur.execute(
-            "UPDATE appeals SET answer_text = ?, status = 'closed' WHERE id = ?",
-            (message.text, appeal_id)
-        )
-        conn.commit()
-    except Exception as e:
-        logger.error(f"Ошибка при обновлении обращения: {e}")
-        bot.send_message(staff_id, "❌ Ошибка при сохранении ответа")
-        return
-    finally:
-        if 'cur' in locals():
-            cur.close()
-        if 'conn' in locals():
-            conn.close()
+        staff_id = message.from_user.id
+        if staff_id not in active_dialogs:
+            return
 
+        dialog_data = active_dialogs[staff_id]
+        user_id = dialog_data['user_id']
+        appeal_id = dialog_data['appeal_id']
 
-    # Отправляем копию председателю (если отвечающий не председатель)
-    if staff_id != find_staff_id('Председатель'):
-        user_data = find_user_by_id('users', user_id, 'name, apartment')
-        if user_data:
-            user_name, apartment = user_data
-            bot.send_message(
-                find_staff_id('Председатель'),
-                f'📩 Ответ {staff_position}:\n'
-                f'‍💻 Получатель: {user_name}\n'
-                f'🏠 Квартира: {apartment}\n\n'
-                f'_{message.text}_',
-                parse_mode="Markdown"
+        MANAGER_ID = find_staff_id('Председатель')
+        ACCOUNTANT_ID = find_staff_id('Бухгалтер')
+        ELECTRIC_ID = find_staff_id('Электрик')
+        PLUMBER_ID = find_staff_id('Сантехник')
+
+        # Определяем должность отвечающего
+        if staff_id == MANAGER_ID:
+            staff_position = "председателя ТСЖ"
+        elif staff_id == ACCOUNTANT_ID:
+            staff_position = "бухгалтера"
+        elif staff_id == ELECTRIC_ID:
+            staff_position = "электрика"
+        elif staff_id == PLUMBER_ID:
+            staff_position = "сантехника"
+        else:
+            staff_position = "администрации"
+
+        # Формируем текст ответа
+        bot.send_message(user_id, f"📩 Ответ {staff_position} на ваше обращение:\n\n{message.text}")
+
+        # Обновляем обращение в БД
+        try:
+            conn = sqlite3.connect(db)
+            cur = conn.cursor()
+            cur.execute(
+                "UPDATE appeals SET answer_text = ?, status = 'closed' WHERE id = ?",
+                (message.text, appeal_id)
             )
+            conn.commit()
+        except Exception as e:
+            logger.error(f"Ошибка при обновлении обращения: {e}")
+            bot.send_message(staff_id, "❌ Ошибка при сохранении ответа")
+            return
+        finally:
+            if 'cur' in locals():
+                cur.close()
+            if 'conn' in locals():
+                conn.close()
 
-    logger.info(f'Ответ {staff_position} на обращение ID {appeal_id}')
-    bot.send_message(staff_id, "✅ Ответ отправлен")
-    del active_dialogs[staff_id]
+        # Отправляем копию председателю (если отвечающий не председатель)
+        if staff_id != find_staff_id('Председатель'):
+            user_data = find_user_by_id('users', user_id, 'name, apartment')
+            if user_data:
+                user_name, apartment = user_data
+                bot.send_message(
+                    find_staff_id('Председатель'),
+                    f'📩 Ответ {staff_position}:\n'
+                    f'‍💻 Получатель: {user_name}\n'
+                    f'🏠 Квартира: {apartment}\n\n'
+                    f'_{message.text}_',
+                    parse_mode="Markdown"
+                )
 
+        logger.info(f'Ответ {staff_position} на обращение ID {appeal_id}')
+        bot.send_message(staff_id, "✅ Ответ отправлен")
+        del active_dialogs[staff_id]
+
+    except Exception as e:
+        logger.error(f"Ошибка в process_staff_reply: {e}", exc_info=True)
+        try:
+            bot.send_message(message.chat.id, "❌ Произошла ошибка. Попробуйте позже.")
+        except:
+            pass
+        handle_error(e)
 
 def notifications():
     """
@@ -1108,65 +1417,92 @@ def notifications():
         time.sleep(60)
 
 
+# Глобальный обработчик ошибок
+def handle_error(exception):
+    try:
+        logger.error(f"Глобальная ошибка: {exception}", exc_info=True)
+        admin_id = find_staff_id('Админ')
+        if admin_id:
+            bot.send_message(admin_id, f"⚠️ Ошибка в боте:\n{str(exception)[:500]}")
+    except Exception as inner_error:
+        # Только логируем, чтобы избежать рекурсии
+        print(f"CRITICAL: Error in error handler: {inner_error}")
+
+
 def init_db():
     """
     Инициализация БД при запуске бота
     :return: None
     """
-    create_table('users', [
-        "telegram_id INTEGER UNIQUE",
-        "name TEXT",
-        "apartment INTEGER",
-        "water_count INTEGER",
-        "electricity_count INTEGER"
-    ])
-    create_table('meters_data', [
-        "telegram_id INTEGER",
-        "apartment INTEGER",
-        "month VARCHAR",
-        "type_water_meter INTEGER",
-        "type_electricity_meter INTEGER",
-        "cold_water_1 INTEGER",
-        "cold_water_2 INTEGER",
-        "cold_water_3 INTEGER",
-        "hot_water_1 INTEGER",
-        "hot_water_2 INTEGER",
-        "hot_water_3 INTEGER",
-        "electricity_1 INTEGER",
-        "electricity_2 INTEGER"
-    ])
-    create_table('appeals', [
-        'sender_id INTEGER',
-        'apartment INTEGER',
-        'name TEXT',
-        'message_text TEXT',
-        'recipient_post TEXT',
-        'answer_text TEXT',
-        "status TEXT DEFAULT 'open'",
-    ])
-    create_table('staff', [
-        'post TEXT',
-        'telegram_id INTEGER',
-        'name TEXT',
-        'auth_code TEXT'
-    ])
-
+    try:
+        create_table('users', [
+            "telegram_id INTEGER UNIQUE",
+            "name TEXT",
+            "apartment INTEGER",
+            "water_count INTEGER",
+            "electricity_count INTEGER"
+        ])
+        create_table('meters_data', [
+            "telegram_id INTEGER",
+            "apartment INTEGER",
+            "month VARCHAR",
+            "type_water_meter INTEGER",
+            "type_electricity_meter INTEGER",
+            "cold_water_1 INTEGER",
+            "cold_water_2 INTEGER",
+            "cold_water_3 INTEGER",
+            "hot_water_1 INTEGER",
+            "hot_water_2 INTEGER",
+            "hot_water_3 INTEGER",
+            "electricity_1 INTEGER",
+            "electricity_2 INTEGER"
+        ])
+        create_table('appeals', [
+            'sender_id INTEGER',
+            'apartment INTEGER',
+            'name TEXT',
+            'message_text TEXT',
+            'recipient_post TEXT',
+            'answer_text TEXT',
+            "status TEXT DEFAULT 'open'",
+        ])
+        create_table('staff', [
+            'post TEXT',
+            'telegram_id INTEGER',
+            'name TEXT',
+            'auth_code TEXT'
+        ])
+    except Exception as e:
+        logger.error(f"Ошибка в /init db: {e}", exc_info=True)
+        try:
+            bot.send_message(find_staff_id('Админ'), "❌ Произошла ошибка. Попробуйте позже.")
+        except:
+            pass
+        handle_error(e)
 
 def init_staff():
     """
     Заполениние таблицы сотрудников
     :return: None
     """
-    tablename = 'staff'
-    table = select_all(tablename)
-    if table:
-        return
-    columns = ['post', 'auth_code']
-    insert_to_database(tablename, columns, ['Админ', ADMIN_CODE])
-    insert_to_database(tablename, columns, ['Председатель', MANAGER_CODE])
-    insert_to_database(tablename, columns, ['Бухгалтер', ACCOUNTANT_CODE])
-    insert_to_database(tablename, columns, ['Сантехник', PLUMBER_CODE])
-    insert_to_database(tablename, columns, ['Электрик', ELECTRIC_CODE])
+    try:
+        tablename = 'staff'
+        table = select_all(tablename)
+        if table:
+            return
+        columns = ['post', 'auth_code']
+        insert_to_database(tablename, columns, ['Админ', ADMIN_CODE])
+        insert_to_database(tablename, columns, ['Председатель', MANAGER_CODE])
+        insert_to_database(tablename, columns, ['Бухгалтер', ACCOUNTANT_CODE])
+        insert_to_database(tablename, columns, ['Сантехник', PLUMBER_CODE])
+        insert_to_database(tablename, columns, ['Электрик', ELECTRIC_CODE])
+    except Exception as e:
+        logger.error(f"Ошибка в init staff: {e}", exc_info=True)
+        try:
+            bot.send_message(find_staff_id('Админ'), "❌ Произошла ошибка. Попробуйте позже.")
+        except:
+            pass
+        handle_error(e)
 
 
 def backup_daily(db_path="tsg_database.sql", backup_dir="backups/daily"):
@@ -1213,6 +1549,8 @@ if __name__ == '__main__':
 
     # Запускаем фоновые задачи в демон-потоке
     threading.Thread(target=notifications, daemon=True).start()
+    # Регистрируем обработчик
+    bot.set_update_listener(lambda updates: None)  # Базовый listener
 
     # Основной цикл работы бота с защитой
     while True:
