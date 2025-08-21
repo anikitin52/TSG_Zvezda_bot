@@ -1,4 +1,10 @@
 import os
+import random
+import socket
+import http.client
+import requests
+from urllib3.exceptions import ProtocolError
+import telebot.apihelper
 import shutil
 import threading
 import time
@@ -1542,6 +1548,7 @@ def backup_monthly(db_path="tsg_database.sql", backup_dir="backups/monthly"):
 
 # Запуск
 if __name__ == '__main__':
+    # Инициализация
     init_db()
     init_staff()
     logger.info('Бот запущен')
@@ -1549,28 +1556,160 @@ if __name__ == '__main__':
 
     # Запускаем фоновые задачи в демон-потоке
     threading.Thread(target=notifications, daemon=True).start()
-    # Регистрируем обработчик
-    bot.set_update_listener(lambda updates: None)  # Базовый listener
 
-    # Основной цикл работы бота с защитой
+    # Улучшенная стратегия перезапуска
+    restart_delay = 5  # начальная задержка
+    max_delay = 300  # максимальная задержка (5 минут)
+    consecutive_errors = 0  # счетчик последовательных ошибок
+    max_consecutive_errors = 10  # максимальное количество ошибок подряд
+
     while True:
         try:
-            logger.info("Запуск polling...")
-            bot.polling(none_stop=True, timeout=30)
+            logger.info(f"Запуск polling... (задержка: {restart_delay}сек, ошибок подряд: {consecutive_errors})")
 
-        except ConnectionError as e:
-            bot.send_message(find_staff_id("Админ"), f"Ошибка соединения: {e}. Перезапуск через 10 секунд...")
-            logger.error(f"Ошибка соединения: {e}. Перезапуск через 10 секунд...")
-            print(f"Ошибка соединения: {e}. Перезапуск через 10 секунд...")
-            time.sleep(10)
+            # Настройка polling с улучшенными параметрами
+            bot.polling(
+                none_stop=True,
+                timeout=90,  # увеличенный timeout
+                long_polling_timeout=60,  # увеличенный long_polling timeout
+                skip_pending=True,  # пропускать pending updates при перезапуске
+                interval=1,  # интервал между запросами
+                allowed_updates=None  # или список конкретных update types
+            )
+
+            # Если polling завершился без ошибок - сбрасываем счетчики
+            restart_delay = 5
+            consecutive_errors = 0
+            logger.info("Polling завершился нормально, перезапуск")
+
+        except ConnectionResetError as e:
+            # Конкретная ошибка "Удаленный хост принудительно разорвал подключение"
+            consecutive_errors += 1
+            logger.error(f"ConnectionResetError [{consecutive_errors}]: Удаленный хост разорвал соединение: {e}")
+
+            if consecutive_errors >= max_consecutive_errors:
+                logger.critical(
+                    f"Достигнут лимит ошибок подряд ({max_consecutive_errors}). Приостанавливаю работу на 10 минут.")
+                try:
+                    bot.send_message(
+                        find_staff_id("Админ"),
+                        "🔴 КРИТИЧЕСКАЯ ОШИБКА: Достигнут лимит сетевых ошибок. "
+                        "Бот приостановлен на 10 минут. Проверьте интернет-соединение."
+                    )
+                except:
+                    pass
+                time.sleep(600)  # 10 минут паузы
+                consecutive_errors = 0
+                restart_delay = 5
+                continue
+
+            # Экспоненциальная задержка + рандомизация
+            restart_delay = min(restart_delay * 2, max_delay)
+            jitter = random.uniform(0.8, 1.2)  # добавляем случайность
+            actual_delay = restart_delay * jitter
+
+            try:
+                bot.send_message(
+                    find_staff_id("Админ"),
+                    f"🔌 Соединение разорвано Telegram сервером\n"
+                    f"Перезапуск через {actual_delay:.1f}сек\n"
+                    f"Ошибок подряд: {consecutive_errors}/{max_consecutive_errors}"
+                )
+            except Exception as notify_error:
+                logger.error(f"Не удалось уведомить админа: {notify_error}")
+
+            logger.info(f"Ждем {actual_delay:.1f} секунд перед перезапуском...")
+            time.sleep(actual_delay)
+
+        except (ConnectionError, ProtocolError, requests.exceptions.ConnectionError,
+                socket.gaierror, socket.timeout, http.client.RemoteDisconnected) as e:
+            # Другие сетевые ошибки
+            consecutive_errors += 1
+            logger.error(f"Сетевая ошибка [{consecutive_errors}]: {type(e).__name__}: {e}")
+
+            restart_delay = min(restart_delay * 1.5, max_delay)
+            try:
+                bot.send_message(
+                    find_staff_id("Админ"),
+                    f"🌐 Сетевая ошибка: {type(e).__name__}\n"
+                    f"Перезапуск через {restart_delay}сек\n"
+                    f"Ошибок подряд: {consecutive_errors}/{max_consecutive_errors}"
+                )
+            except Exception as notify_error:
+                logger.error(f"Не удалось уведомить админа: {notify_error}")
+
+            time.sleep(restart_delay)
+
+        except telebot.apihelper.ApiException as e:
+            # Ошибки API Telegram (например, лимиты запросов)
+            consecutive_errors += 1
+            logger.error(f"API Error [{consecutive_errors}]: {e}")
+
+            # Для API ошибок используем более агрессивную задержку
+            restart_delay = min(restart_delay * 3, 900)  # максимум 15 минут для API errors
+            try:
+                bot.send_message(
+                    find_staff_id("Админ"),
+                    f"📡 Ошибка Telegram API: {str(e)[:100]}\n"
+                    f"Перезапуск через {restart_delay}сек\n"
+                    "Возможно, превышены лимиты запросов"
+                )
+            except Exception as notify_error:
+                logger.error(f"Не удалось уведомить админа: {notify_error}")
+
+            time.sleep(restart_delay)
+
+        except KeyboardInterrupt:
+            # Корректный выход по Ctrl+C
+            logger.info("Бот остановлен пользователем")
+            try:
+                bot.send_message(find_staff_id("Админ"), "🛑 Бот остановлен вручную")
+            except:
+                pass
+            break
 
         except Exception as e:
-            bot.send_message(find_staff_id("Админ"), f"Критическая ошибка: {e}. Перезапуск через 30 секунд...")
-            logger.error(f"Критическая ошибка: {e}. Перезапуск через 30 секунд...")
-            print(f"Критическая ошибка: {e}. Перезапуск через 30 секунд...")
-            time.sleep(30)
+            # Все остальные непредвиденные ошибки
+            consecutive_errors += 1
+            logger.error(f"Критическая ошибка [{consecutive_errors}]: {type(e).__name__}: {e}", exc_info=True)
+
+            restart_delay = min(restart_delay * 2, max_delay)
+            try:
+                bot.send_message(
+                    find_staff_id("Админ"),
+                    f"⚠️ Непредвиденная ошибка: {type(e).__name__}\n"
+                    f"Перезапуск через {restart_delay}сек\n"
+                    f"Ошибка: {str(e)[:150]}"
+                )
+            except Exception as notify_error:
+                logger.error(f"Не удалось уведомить админа: {notify_error}")
+
+            time.sleep(restart_delay)
 
         finally:
-            bot.send_message(find_staff_id("Админ"), "Очистка ресурсов перед перезапуском...")
+            # Всегда выполняем очистку
             logger.info("Очистка ресурсов перед перезапуском...")
-            # Дополнительные действия по очистке при необходимости
+            try:
+                # Закрываем все соединения (если используются)
+                if 'session' in globals():
+                    telebot.session.close()
+            except Exception as cleanup_error:
+                logger.error(f"Ошибка при очистке: {cleanup_error}")
+
+            # Логируем статистику перед перезапуском
+            logger.info(f"Статистика: задержка={restart_delay}сек, ошибок подряд={consecutive_errors}")
+
+            # Проверяем соединение с интернетом
+            try:
+                socket.create_connection(("8.8.8.8", 53), timeout=5)
+                logger.info("Интернет-соединение активно")
+            except socket.error:
+                logger.warning("Нет интернет-соединения")
+                try:
+                    bot.send_message(
+                        find_staff_id("Админ"),
+                        "🌐 ВНИМАНИЕ: Нет интернет-соединения!\n"
+                        "Бот будет пытаться переподключиться..."
+                    )
+                except:
+                    pass
