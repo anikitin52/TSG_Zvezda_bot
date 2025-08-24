@@ -130,9 +130,6 @@ def check_apartment_number(message):
             users = select_all(tablename)
             user_id = message.from_user.id
 
-            if any(u[2] == apartment for u in users):
-                bot.send_message(message.chat.id, "❌ Квартира уже зарегистрирована")
-                return
 
             # Сохраняем номер квартиры (не перезаписываем весь словарь!)
             user_data[user_id]['apartment'] = apartment
@@ -794,10 +791,8 @@ def send_data(message):
     """
     try:
         # Проверка времени отправки
-        if not (start_collection[0] <= now.day <= end_collection[0] and
-                not (now.day == end_collection[0] and
-                     (now.hour > end_collection[1] or
-                      (now.hour == end_collection[1] and now.minute > end_collection[2])))):
+        today = datetime.now().day
+        if not (start_collection[0] <= today < end_collection[0]):
             bot.send_message(message.chat.id,
                              "❌ Прием показаний закрыт. Показания принимаются с 23 по 27 число каждого месяца")
             return
@@ -1399,17 +1394,6 @@ def notifications():
 
         # Завершение сбора
         if now.day == end_collection[0] and now.hour == end_collection[1] and now.minute == end_collection[2]:
-            users = select_all('users')
-            sended_data = select_all('meters_data')
-            apartments = []
-            for data in sended_data:
-                apartments.append(data[2])
-            for user in users:
-                users_apartment = user[2]
-                user_id = user[1]
-                if users_apartment not in apartments:
-                    logger.info(f"Уведомление о закрытии сбора отправлено {user_id}")
-                    bot.send_message(user_id, "🔴 Прием показаний закрыт до следующего месяца")
 
             ACCOUNTANT_ID = find_staff_id('Бухгалтер')
             send_table(ACCOUNTANT_ID)
