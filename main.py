@@ -238,7 +238,8 @@ def export_data(message):
     """
     try:
         ACCOUNTANT_ID = find_staff_id('Бухгалтер')
-        if message.chat.id != ACCOUNTANT_ID:
+        ADMIN_ID = find_staff_id("Админ")
+        if message.chat.id != ACCOUNTANT_ID or message.chat.id != ADMIN_ID:
             bot.send_message(message.chat.id, "❌ У вас нет доступа к этой команде")
             return
         else:
