@@ -23,6 +23,7 @@ from services.utils import *
 bot = TeleBot(BOT_TOKEN)
 now = datetime.now()
 
+# TODO: Во всех функциях, которые принимают текст сделать проверку: if not message.text
 
 @bot.message_handler(commands=['start'])
 def start(message):
@@ -1094,6 +1095,7 @@ def handle_address_request(message):
         ACCOUNTANT_ID = find_staff_id('Бухгалтер')
         PLUMBER_ID = find_staff_id('Сантехник')
         ELECTRIC_ID = find_staff_id('Электрик')
+        # TODO: Если что-то срочное предложить пользователю позвонить сантехнику (обсудить)
         recipient_data = {
             '/manager': {
                 'id': MANAGER_ID,
@@ -1394,13 +1396,12 @@ def notifications():
 
         # Завершение сбора
         if now.day == end_collection[0] and now.hour == end_collection[1] and now.minute == end_collection[2]:
-
+            #TODO: Не удалять данные из таблицы, а сделать сортировку по месяцу
             ACCOUNTANT_ID = find_staff_id('Бухгалтер')
             send_table(ACCOUNTANT_ID)
-            logger.info('Таблица отправвлена бухгалтеру')
+            logger.info('Таблица отправлена бухгалтеру')
             if scheulder.running:
                 scheulder.shutdown()
-            clear_table('meters_data')
             backup_monthly()
             logger.warning('Таблица показаний очищена')
 
@@ -1410,6 +1411,7 @@ def notifications():
 # Глобальный обработчик ошибок
 def handle_error(exception):
     try:
+        # TODO: Убрать сообщения админу о сетевых ошибках. См. "СЕТЕВЫЕ ОШИБКИ"
         logger.error(f"Глобальная ошибка: {exception}", exc_info=True)
         admin_id = find_staff_id('Админ')
         if admin_id:

@@ -20,7 +20,7 @@ def create_exel_file():
     try:
         conn = sqlite3.connect('tsg_database.sql')
         parameters = 'apartment, type_water_meter, type_electricity_meter, cold_water_1,cold_water_2, cold_water_3, hot_water_1, hot_water_2, hot_water_3, electricity_1, electricity_2'
-        df = pd.read_sql_query(f"SELECT {parameters} FROM meters_data", conn)
+        df = pd.read_sql_query(f"SELECT {parameters} FROM meters_data WHERE month = {current_month}", conn)
         df.rename(columns={
             'apartment': 'Квартира',
             'type_water_meter': 'Счетчиков воды',
