@@ -4,7 +4,7 @@ from services.logger import logger
 
 db = 'tsg_database.sql'
 
-
+# TODO: делать шифрование БД
 def create_table(table_name, table_columns):
     """
     Создание таблицы с заданным названием и колонками

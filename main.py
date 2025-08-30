@@ -24,6 +24,7 @@ bot = TeleBot(BOT_TOKEN)
 now = datetime.now()
 
 # TODO: Во всех функциях, которые принимают текст сделать проверку: if not message.text
+# TODO: Сделать пользовательское соглашение и политику конфидециальности
 
 @bot.message_handler(commands=['start'])
 def start(message):
@@ -1012,6 +1013,12 @@ def confirm_all(call):
         # Отправка отчета
         ACCOUNTANT_ID = find_staff_id('Бухгалтер')
         bot.send_message(ACCOUNTANT_ID, f"📨 Показания от кв. {user.apartment}:\n{report}")
+        # TODO: !!! Сделать, чтобы у бухгалтера была возможность написать отправителю
+        '''
+        Варианты: 
+        1. Кнопка "Написать отправителю"
+        2. Потребовать номер телефона от отправителя и дать ссылку на него 
+        '''
         user.clear_metrics()
         temp_users.pop(call.from_user.id, None)
         bot.send_message(call.message.chat.id, "✅ Показания отправлены")
@@ -1368,6 +1375,7 @@ def notifications():
     scheulder = BackgroundScheduler()
     scheulder.add_job(backup_daily, 'cron', hour=2, minute=0)
 
+    # TODO: !!! Исправить ошбику. Таблица пустая
     while True:
         now = datetime.now()
         current_month = f"{now.month}.{now.year}"
@@ -1397,7 +1405,7 @@ def notifications():
 
         # Завершение сбора
         if now.day == end_collection[0] and now.hour == end_collection[1] and now.minute == end_collection[2]:
-            #TODO: Не удалять данные из таблицы, а сделать сортировку по месяцу
+            #TODO: !!! Не удалять данные из таблицы, а сделать сортировку по месяцу
             ACCOUNTANT_ID = find_staff_id('Бухгалтер')
             send_table(ACCOUNTANT_ID)
             logger.info('Таблица отправлена бухгалтеру')
