@@ -1363,6 +1363,40 @@ def process_staff_reply(message):
             pass
         handle_error(e)
 
+
+@bot.message_handler(func=lambda message: True, content_types=['text'])
+def handle_unrecognized_input(message):
+    """
+    Обрабатывает все текстовые сообщения, которые не были обработаны другими обработчиками
+    """
+    try:
+        # Проверяем, зарегистрирован ли пользователь
+        user_exists = find_user_by_id('users', message.from_user.id, 'COUNT(*)')
+
+        if user_exists and user_exists[0] > 0:
+            # Пользователь зарегистрирован - предлагаем доступные команды
+            bot.send_message(
+                message.chat.id,
+                "❌ Ошибка ввода"
+            )
+        else:
+            # Пользователь не зарегистрирован
+            bot.send_message(
+                message.chat.id,
+                "❌ Ошибка ввода \n\n"
+                "Для начала работы с ботом введите /start"
+            )
+
+        logger.info(f"Пользователь {message.from_user.id} отправил непонятное сообщение: {message.text}")
+
+    except Exception as e:
+        logger.error(f"Ошибка в handle_unrecognized_input: {e}", exc_info=True)
+        try:
+            bot.send_message(message.chat.id, "❌ Произошла ошибка. Попробуйте позже.")
+        except:
+            pass
+        handle_error(e)
+
 def notifications():
     """
     Оработчик напоминаний
