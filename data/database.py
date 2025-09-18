@@ -173,31 +173,6 @@ def select_all_where(table_name, where_condition):
     return result
 
 
-def clear_table(tablename):
-    """
-    Очистка данных в таблиуе
-    :param tablename: Строка - название таблицы
-    :return: None
-    """
-    conn = None
-    cur = None
-    try:
-        conn = sqlite3.connect(db)
-        cur = conn.cursor()
-
-        cur.execute(f"DELETE FROM {tablename}")
-        cur.execute("DELETE FROM sqlite_sequence WHERE name = ?", (tablename,))
-        conn.commit()
-        logger.warning(f'Таблица {tablename} очищена, автоинкремент сброшен')
-    except Exception as e:
-        print(f"Ошибка в clear_table: {e}")
-        raise
-    finally:
-        if cur:
-            cur.close()
-        if conn:
-            conn.close()
-
 
 def update_values(table_name, set_values, where_conditions):
     """
