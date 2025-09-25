@@ -803,12 +803,30 @@ def send_data(message):
                              "❌ Прием показаний закрыт. Показания принимаются с 23 по 27 число каждого месяца")
             return
 
+        now = datetime.now()
+        current_month = now.month
+        current_year = now.year
+
         # Проверка того, что пользователь еще не отправлял показания в этом месяце
         telegram_id = message.from_user.id
-        user = find_user_by_id('meters_data', telegram_id)
-        if user:
-            bot.send_message(message.chat.id, '✅ Вы уже передали показания в этом месяце')
-            return
+
+        user_data = find_user_by_id('users', telegram_id, 'apartment')
+        if user_data:
+            apartment = user_data[0]
+            current_month_str = f"{current_month:02d}.{current_year}"
+
+            # Проверяем, сдавала ли квартира показания в текущем месяце
+            conn = sqlite3.connect(db)
+            cur = conn.cursor()
+            cur.execute("SELECT COUNT(*) FROM meters_data WHERE apartment = ? AND month = ?",
+                        (apartment, current_month_str))
+            already_submitted = cur.fetchone()[0] > 0
+            cur.close()
+            conn.close()
+
+            if already_submitted:
+                bot.send_message(message.chat.id, '✅ Вы уже передали показания в этом месяце')
+                return
 
         # Проверка зарегистрирован ли пользователь
         if telegram_id in temp_users:
@@ -1442,14 +1460,12 @@ def notifications():
 
         # Завершение сбора
         if now.day == end_collection[0] and now.hour == end_collection[1] and now.minute == end_collection[2]:
-            #TODO: !!! Не удалять данные из таблицы, а сделать сортировку по месяцу
             ACCOUNTANT_ID = find_staff_id('Бухгалтер')
             send_table(ACCOUNTANT_ID)
             logger.info('Таблица отправлена бухгалтеру')
             if scheulder.running:
                 scheulder.shutdown()
             backup_monthly()
-            logger.warning('Таблица показаний очищена')
 
         time.sleep(60)
 
