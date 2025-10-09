@@ -56,7 +56,6 @@
 |-------------------|------------|----------------------------------|
 | id              | INTEGER    | Уникальный идентификатор        |
 | telegram_id     | INTEGER      | Telegram ID пользователя        |
-| name            | TEXT         | ФИО пользователя               |
 | apartment       | INTEGER      | Номер квартиры                  |
 | water_count     | INTEGER    | Количество водяных счётчиков    |
 | electricity_count | INTEGER  | Количество эл. счётчиков        |
