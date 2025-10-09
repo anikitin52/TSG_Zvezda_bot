@@ -24,8 +24,6 @@ bot = TeleBot(BOT_TOKEN)
 now = datetime.now()
 
 # TODO: Во всех функциях, которые принимают текст сделать проверку: if not message.text
-# TODO: Сделать пользовательское соглашение и политику конфидециальности
-
 @bot.message_handler(commands=['start'])
 def start(message):
     """
@@ -63,10 +61,9 @@ def check_password(message):
     """
     try:
         if message.text.strip() == PASSWORD:
-            # Пароль верный, предлагаем зарегистрироваться
-            bot.send_message(message.chat.id, "👋 Добро пожаловать! Для начала зарегистрируйтесь:")
-            msg = bot.send_message(message.chat.id, "Введите ФИО")
-            bot.register_next_step_handler(msg, check_name)
+            # Пароль верный, сразу запрашиваем номер квартиры
+            msg = bot.send_message(message.chat.id, "Введите номер вашей квартиры (от 1 до 150)")
+            bot.register_next_step_handler(msg, check_apartment_number)
             logger.info(f'Пользователь {message.from_user.id} ввел верный пароль')
 
         elif message.text.strip().lower() == '/cancel':
@@ -80,35 +77,7 @@ def check_password(message):
             logger.info(f'Пользователь {message.from_user.id} ввел неверный пароль')
 
     except Exception as e:
-        logger.error(f"Ошибка в check_name: {e}", exc_info=True)
-        try:
-            bot.send_message(message.chat.id, "❌ Произошла ошибка. Попробуйте позже.")
-        except:
-            pass
-        handle_error(e)
-
-
-def check_name(message):
-    try:
-        if validate_russian_name(message.text):
-            # Сохраняем имя во временные данные
-            user_id = message.from_user.id
-            if user_id not in user_data:
-                user_data[user_id] = {}
-            user_data[user_id]['name'] = message.text.strip()  # Сохраняем имя
-
-            msg = bot.send_message(message.chat.id, "Введите номер вашей квартиры (от 1 до 150)")
-            bot.register_next_step_handler(msg, check_apartment_number)
-
-        elif message.text.strip().lower() == '/cancel':
-            bot.send_message(message.chat.id, "❌ Действие отменено")
-            return
-
-        else:
-            msg = bot.send_message(message.chat.id, "❌ Неверный формат ФИО. Введите в формате: Иванов Иван Иванович")
-            bot.register_next_step_handler(msg, check_name)
-    except Exception as e:
-        logger.error(f"Ошибка в check_name: {e}", exc_info=True)
+        logger.error(f"Ошибка в check_password: {e}", exc_info=True)
         try:
             bot.send_message(message.chat.id, "❌ Произошла ошибка. Попробуйте позже.")
         except:
@@ -132,8 +101,9 @@ def check_apartment_number(message):
             users = select_all(tablename)
             user_id = message.from_user.id
 
-
-            # Сохраняем номер квартиры (не перезаписываем весь словарь!)
+            # Сохраняем номер квартиры
+            if user_id not in user_data:
+                user_data[user_id] = {}
             user_data[user_id]['apartment'] = apartment
 
             msg = bot.send_message(message.chat.id, "Введите количество счетчиков холодной воды (от 1 до 3):")
@@ -151,6 +121,7 @@ def check_apartment_number(message):
         handle_error(e)
 
 
+
 def check_water_meters(message):
     try:
         if message.text.strip().lower() == '/cancel':
@@ -161,7 +132,7 @@ def check_water_meters(message):
             if not 1 <= water_meters <= 3:
                 raise ValueError
 
-            # Сохраняем количество счетчиков (не перезаписываем весь словарь!)
+            # Сохраняем количество счетчиков
             user_id = message.from_user.id
             user_data[user_id]['water_count'] = water_meters
 
@@ -198,13 +169,14 @@ def select_meters(call):
         tablename = 'users'
 
         # Получаем сохраненные данные
-        if user_id not in user_data or 'name' not in user_data[user_id]:
+        if user_id not in user_data or 'apartment' not in user_data[user_id]:
             bot.answer_callback_query(call.id, "❌ Ошибка: данные не найдены. Начните регистрацию заново.",
                                       show_alert=True)
             return
 
         apartment = user_data[user_id]['apartment']
-        name = user_data[user_id]['name']
+        # Генерируем имя пользователя на основе его Telegram данных
+        name = f"Житель кв.{apartment}"
 
         # Вставляем запись о квартире в БД
         insert_to_database(tablename,
