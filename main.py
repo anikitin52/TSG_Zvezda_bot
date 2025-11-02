@@ -23,6 +23,7 @@ from services.utils import *
 bot = TeleBot(BOT_TOKEN)
 now = datetime.now()
 
+
 # TODO: Во всех функциях, которые принимают текст сделать проверку: if not message.text
 @bot.message_handler(commands=['start'])
 def start(message):
@@ -119,7 +120,6 @@ def check_apartment_number(message):
         except:
             pass
         handle_error(e)
-
 
 
 def check_water_meters(message):
@@ -921,6 +921,7 @@ def review(call):
             pass
         handle_error(e)
 
+
 @bot.callback_query_handler(func=lambda call: call.data.startswith('edit_'))
 def edit_value(call):
     """
@@ -929,7 +930,7 @@ def edit_value(call):
     :return: None
     """
     try:
-    # Корректировка значений
+        # Корректировка значений
         meter = call.data.split('_')[1]
         current_editing[call.from_user.id] = meter
         msg = bot.send_message(call.message.chat.id, f"Введите новое значение для выбранного счетчика")
@@ -942,6 +943,7 @@ def edit_value(call):
         except:
             pass
         handle_error(e)
+
 
 @bot.callback_query_handler(func=lambda call: call.data == 'confirm_all')
 def confirm_all(call):
@@ -1025,6 +1027,7 @@ def confirm_all(call):
             pass
         handle_error(e)
 
+
 @bot.callback_query_handler(func=lambda call: call.data == 'back_edit')
 def back_edit(call):
     """
@@ -1051,6 +1054,7 @@ def back_edit(call):
         except:
             pass
         handle_error(e)
+
 
 @bot.callback_query_handler(func=lambda call: call.data == 'cancel')
 def cancel(call):
@@ -1143,6 +1147,7 @@ def handle_address_request(message):
             pass
         handle_error(e)
 
+
 def send_address(message, recipient_info):
     """
     Запись обращения в БД, отправка получателю
@@ -1192,9 +1197,12 @@ def send_address(message, recipient_info):
         # Кнопка отправки сообщения
         markup = types.InlineKeyboardMarkup()
         markup.add(types.InlineKeyboardButton(
-            "Ответить",
+            "✍ Ответить",
             callback_data=f"reply_{sender_id}_{message.message_id}_{appeal_id}"
         ))
+        username = message.from_user.username
+        if username:
+            markup.add(types.InlineKeyboardButton('💬 Написать', url=f"tg://user?id={sender_id}"))
 
         # Формируем и отправляем сообщение
         bot.send_message(
@@ -1237,6 +1245,7 @@ def send_address(message, recipient_info):
             pass
         handle_error(e)
 
+
 @bot.callback_query_handler(func=lambda call: call.data.startswith('reply_'))
 def start_staff_reply(call):
     """
@@ -1275,6 +1284,7 @@ def start_staff_reply(call):
             pass
         handle_error(e)
 
+
 @bot.message_handler(func=lambda m: m.reply_to_message and m.reply_to_message.text == "✍️ Введите ваш ответ:")
 def process_staff_reply(message):
     """
@@ -1308,8 +1318,14 @@ def process_staff_reply(message):
         else:
             staff_position = "администрации"
 
+        markup = types.InlineKeyboardMarkup()
+        username = message.from_user.username
+        if username:
+            markup.add(types.InlineKeyboardButton('💬 Написать сотруднику', url=f"tg://user?id={staff_id}"))
+
         # Формируем текст ответа
-        bot.send_message(user_id, f"📩 Ответ {staff_position} на ваше обращение:\n\n{message.text}")
+        bot.send_message(user_id, f"📩 Ответ {staff_position} на ваше обращение:\n\n{message.text}",
+                         reply_markup=markup)
 
         # Обновляем обращение в БД
         try:
@@ -1389,6 +1405,7 @@ def handle_unrecognized_input(message):
         except:
             pass
         handle_error(e)
+
 
 def notifications():
     """
@@ -1505,6 +1522,7 @@ def init_db():
         except:
             pass
         handle_error(e)
+
 
 def init_staff():
     """
