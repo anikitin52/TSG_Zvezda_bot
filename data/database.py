@@ -4,6 +4,20 @@ from services.logger import logger
 
 db = 'tsg_database.sql'
 
+
+def check_user_registration(user_id):
+    pass
+
+
+def get_user_apartment(user_id):
+    pass
+
+
+def create_new_user(user_id, user_name, user_apartment, water_meters, electricity_meters):
+    pass
+
+
+
 # TODO: cделать шифрование БД
 def create_table(table_name, table_columns):
     """
@@ -171,7 +185,6 @@ def select_all_where(table_name, where_condition):
         if conn:
             conn.close()
     return result
-
 
 
 def update_values(table_name, set_values, where_conditions):

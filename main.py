@@ -1,20 +1,21 @@
+
 import os
 import random
 import socket
-import http.client
 import requests
 from urllib3.exceptions import ProtocolError
 import telebot.apihelper
 import shutil
 import threading
 import time
-
 from apscheduler.schedulers.background import BackgroundScheduler
+
 from telebot import TeleBot
+from config import *
 
 from config import *
 from data.data import *
-from data.database import *
+from features.registration import *
 from data.models import User
 from services.exel_export import send_table, send_appeals_table
 from services.logger import logger
@@ -25,181 +26,8 @@ now = datetime.now()
 
 
 # TODO: Во всех функциях, которые принимают текст сделать проверку: if not message.text
-@bot.message_handler(commands=['start'])
-def start(message):
-    """
-    Обработка команды /start -> Запуск бота. Начало регистрации пользователя.
-    :param message: Сообщение от пользователя - Команда /start
-    :return: None
-    """
-    try:
-        tablename = 'users'
-        user_id = message.from_user.id
 
-        # Проверяем наличие пользователя
-        user = find_user_by_id(tablename, user_id)
-        if user:
-            apartment = user[3]
-            bot.send_message(message.chat.id, f"✅ Вы уже зарегистрированы! Квартира: {apartment}")
-        else:
-            # Запрашиваем пароль у нового пользователя
-            msg = bot.send_message(message.chat.id, '🔒 Для начала работы с ботом введите пароль доступа:')
-            bot.register_next_step_handler(msg, check_password)
-    except Exception as e:
-        logger.error(f"Ошибка в /start: {e}", exc_info=True)
-        try:
-            bot.send_message(message.chat.id, "❌ Произошла ошибка. Попробуйте позже.")
-        except:
-            pass
-        handle_error(e)
-
-
-def check_password(message):
-    """
-    Проверка введенного пароля
-    :param message: Сообщение с введенным паролем
-    :return: None
-    """
-    try:
-        if message.text.strip() == PASSWORD:
-            # Пароль верный, сразу запрашиваем номер квартиры
-            msg = bot.send_message(message.chat.id, "Введите номер вашей квартиры (от 1 до 150)")
-            bot.register_next_step_handler(msg, check_apartment_number)
-            logger.info(f'Пользователь {message.from_user.id} ввел верный пароль')
-
-        elif message.text.strip().lower() == '/cancel':
-            bot.send_message(message.chat.id, "❌ Действие отменено")
-            return
-
-        else:
-            # Пароль неверный - запрашиваем снова
-            msg = bot.send_message(message.chat.id, "❌ Неверный пароль. Попробуйте еще раз:")
-            bot.register_next_step_handler(msg, check_password)  # Снова вызываем проверку пароля
-            logger.info(f'Пользователь {message.from_user.id} ввел неверный пароль')
-
-    except Exception as e:
-        logger.error(f"Ошибка в check_password: {e}", exc_info=True)
-        try:
-            bot.send_message(message.chat.id, "❌ Произошла ошибка. Попробуйте позже.")
-        except:
-            pass
-        handle_error(e)
-
-
-def check_apartment_number(message):
-    try:
-        if message.text.strip().lower() == '/cancel':
-            bot.send_message(message.chat.id, "❌ Действие отменено")
-            return
-
-        try:
-            apartment = int(message.text.strip())
-            if not 1 <= apartment <= 150:
-                raise ValueError
-
-            # Проверка наличия квартиры в БД
-            tablename = 'users'
-            users = select_all(tablename)
-            user_id = message.from_user.id
-
-            # Сохраняем номер квартиры
-            if user_id not in user_data:
-                user_data[user_id] = {}
-            user_data[user_id]['apartment'] = apartment
-
-            msg = bot.send_message(message.chat.id, "Введите количество счетчиков холодной воды (от 1 до 3):")
-            bot.register_next_step_handler(msg, check_water_meters)
-
-        except ValueError:
-            msg = bot.send_message(message.chat.id, "❌ Введите число от 1 до 150")
-            bot.register_next_step_handler(msg, check_apartment_number)
-    except Exception as e:
-        logger.error(f"Ошибка в check_apartment_number: {e}", exc_info=True)
-        try:
-            bot.send_message(message.chat.id, "❌ Произошла ошибка. Попробуйте позже.")
-        except:
-            pass
-        handle_error(e)
-
-
-def check_water_meters(message):
-    try:
-        if message.text.strip().lower() == '/cancel':
-            bot.send_message(message.chat.id, "❌ Действие отменено")
-            return
-        try:
-            water_meters = int(message.text.strip())
-            if not 1 <= water_meters <= 3:
-                raise ValueError
-
-            # Сохраняем количество счетчиков
-            user_id = message.from_user.id
-            user_data[user_id]['water_count'] = water_meters
-
-            # Кнопки выбора счетчика электричества
-            markup = types.InlineKeyboardMarkup()
-            markup.add(
-                types.InlineKeyboardButton('Однотарифный',
-                                           callback_data=f'elec_1_{water_meters}_{user_data[user_id]["apartment"]}'),
-                types.InlineKeyboardButton('Двухтарифный',
-                                           callback_data=f'elec_2_{water_meters}_{user_data[user_id]["apartment"]}')
-            )
-            bot.send_message(message.chat.id, "Выберите тип счетчика электричества", reply_markup=markup)
-
-        except ValueError:
-            msg = bot.send_message(message.chat.id, "❌ Введите число от 1 до 3")
-            bot.register_next_step_handler(msg, check_water_meters)
-
-    except Exception as e:
-        logger.error(f"Ошибка в check_water_meters: {e}", exc_info=True)
-        try:
-            bot.send_message(message.chat.id, "❌ Произошла ошибка. Попробуйте позже.")
-        except:
-            pass
-        handle_error(e)
-
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith('elec_'))
-def select_meters(call):
-    try:
-        parts = call.data.split('_')
-        elec_type = parts[1]
-        water_count = parts[2]
-        user_id = call.from_user.id
-        tablename = 'users'
-
-        # Получаем сохраненные данные
-        if user_id not in user_data or 'apartment' not in user_data[user_id]:
-            bot.answer_callback_query(call.id, "❌ Ошибка: данные не найдены. Начните регистрацию заново.",
-                                      show_alert=True)
-            return
-
-        apartment = user_data[user_id]['apartment']
-        # Генерируем имя пользователя на основе его Telegram данных
-        name = f"Житель кв.{apartment}"
-
-        # Вставляем запись о квартире в БД
-        insert_to_database(tablename,
-                           ['telegram_id', 'name', 'apartment', 'water_count', 'electricity_count'],
-                           [user_id, name, int(apartment), int(water_count), int(elec_type)])
-
-        # Очищаем временные данные
-        if user_id in user_data:
-            del user_data[user_id]
-
-        bot.answer_callback_query(call.id)
-        bot.send_message(call.message.chat.id, "✅ Регистрация успешна! Перейдите в профиль: /account")
-
-        ADMIN_ID = find_staff_id('Админ')
-        bot.send_message(ADMIN_ID,
-                         f"Новый пользователь: {name}\n"
-                         f"Квартира: {apartment}\n"
-                         f"Счетчиков воды: {water_count}\n"
-                         f"Тип счетчика электричества: {'двухтарифный' if elec_type == '2' else 'однотарифный'}")
-
-    except Exception as e:
-        logger.error(f"Ошибка при завершении регистрации: {e}")
-        bot.answer_callback_query(call.id, "❌ Произошла ошибка. Попробуйте снова.", show_alert=True)
+registration_handler(bot)
 
 
 @bot.message_handler(commands=['export'])
@@ -1660,7 +1488,7 @@ if __name__ == '__main__':
             time.sleep(actual_delay)
 
         except (ConnectionError, ProtocolError, requests.exceptions.ConnectionError,
-                socket.gaierror, socket.timeout, http.client.RemoteDisconnected) as e:
+                socket.gaierror, socket.timeout) as e:
             # Другие сетевые ошибки
             consecutive_errors += 1
             logger.error(f"Сетевая ошибка [{consecutive_errors}]: {type(e).__name__}: {e}")
