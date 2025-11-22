@@ -12,10 +12,13 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 from telebot import TeleBot
 from config import *
-
+from data.database import *
 from config import *
 from data.data import *
-from features.registration import *
+
+from features.registration import registration_handler
+from features.export import export_data
+
 from data.models import User
 from services.exel_export import send_table, send_appeals_table
 from services.logger import logger
@@ -28,55 +31,8 @@ now = datetime.now()
 # TODO: Во всех функциях, которые принимают текст сделать проверку: if not message.text
 
 registration_handler(bot)
+export_data(bot)
 
-
-@bot.message_handler(commands=['export'])
-def export_data(message):
-    """
-    Обработка команды /export -> Отправка пользователю таблицы с данными
-    :param message: Сообщение от пользователя - команда -> /export
-    :return: None
-    """
-    try:
-        ACCOUNTANT_ID = find_staff_id('Бухгалтер')
-        ADMIN_ID = find_staff_id("Админ")
-
-        if message.chat.id != ACCOUNTANT_ID and message.chat.id != ADMIN_ID:
-            bot.send_message(message.chat.id, "❌ У вас нет доступа к этой команде")
-            return
-        else:
-            logger.info(f'Пользоватлель {message.chat.id} экспортировал Exel-таблицу с показаниями счетчтков')
-            send_table(message.chat.id)
-
-    except Exception as e:
-        logger.error(f"Ошибка в export_data: {e}", exc_info=True)
-        try:
-            bot.send_message(message.chat.id, "❌ Произошла ошибка. Попробуйте позже.")
-        except:
-            pass
-        handle_error(e)
-
-
-@bot.message_handler(commands=['appeals'])
-def send_appeals(message):
-    try:
-        MANAGER_ID = find_staff_id('Председатель')
-        ADMIN_ID = find_staff_id("Админ")
-
-        if message.chat.id != MANAGER_ID and message.chat.id != ADMIN_ID:
-            bot.send_message(message.chat.id, "❌ У вас нет доступа к этой команде")
-            return
-        else:
-            logger.info(f'Пользоватлель {message.chat.id} экспортировал Exel-таблицу с обращениями')
-            send_appeals_table(message.chat.id)
-
-    except Exception as e:
-        logger.error(f"Ошибка в send_appeals: {e}", exc_info=True)
-        try:
-            bot.send_message(message.chat.id, "❌ Произошла ошибка. Попробуйте позже.")
-        except:
-            pass
-        handle_error(e)
 
 
 @bot.message_handler(commands=['backup'])

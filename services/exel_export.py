@@ -9,6 +9,10 @@ from config import BOT_TOKEN
 bot = TeleBot(BOT_TOKEN)
 
 
+def send_data(user_id, tablename):
+    pass
+
+
 def create_exel_file():
     """
     Создание Exel-таблицы из таблицы meters_data в БД
