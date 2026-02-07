@@ -9,6 +9,9 @@ dist/
 build/
 count.txt
 
+# Служба безопасности
+SecurityManager.py
+
 # Файлы зависимостей
 venv/
 .env/
