@@ -1,0 +1,40 @@
+{% extends 'base.html' %}
+
+{% block title %}
+ТСЖ "Звезда" - Авторизация
+{% endblock %}
+
+{% block body %}
+<div class="header">
+        <h1>ТСЖ "Звезда"</h1>
+        <div class="'subtitle">Административная панель управления </div>
+    </div>
+
+    <div class="container">
+        <div class="login-panel">
+            <div class="logo">ТСЖ</div>
+            <h2 class="login-title">Авторизация</h2>
+            <p class="login-subtitle">Введите код авторизации для входа</p>
+
+            <div class="input-group">
+                <label for="accessCode">Код доступа</label>
+                <input
+                        type="password"
+                        id="accessCode"
+                        placeholder="Введите код авторизации"
+                        autocomplete="off"
+                        autofocus
+                >
+            </div>
+            <button class="login-button" onclick="login()">
+                Войти в Систему
+            </button>
+            <div class="error-message" id="error_message"></div>
+        </div>
+    </div>
+
+    <div class="footer">
+        © 2026 ТСЖ "Звезда". Все права защищены.
+    </div>
+{% endblock %}
+
